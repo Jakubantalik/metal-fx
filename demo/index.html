@@ -2530,8 +2530,8 @@
     <div class="code-block code-block--multi">
       <code>import { MetalFx } from 'metal-fx';
 
-&lt;MetalFx color="chromatic" strength={1}&gt;
-  &lt;Button&gt;Upgrade to Pro&lt;/Button&gt;
+&lt;MetalFx preset="chromatic" strength={1}&gt;
+  &lt;button&gt;Upgrade to Pro&lt;/button&gt;
 &lt;/MetalFx&gt;</code>
       <button class="copy-btn" type="button" data-state="a" aria-label="Copy usage example">
         <span class="t-icon" data-icon="a">
@@ -2632,8 +2632,8 @@
     </div>
 
     <div class="code-block code-block--multi">
-      <code id="pgCode">&lt;MetalFx color="chromatic" strength={1}&gt;
-  &lt;Button&gt;Upgrade to Pro&lt;/Button&gt;
+      <code id="pgCode">&lt;MetalFx preset="chromatic" variant="button" strength={1}&gt;
+  &lt;button&gt;Upgrade to Pro&lt;/button&gt;
 &lt;/MetalFx&gt;</code>
       <button class="copy-btn" type="button" data-state="a" aria-label="Copy playground code">
         <span class="t-icon" data-icon="a">
@@ -8683,11 +8683,14 @@ requestAnimationFrame(render);
     const codeEl = document.getElementById('pgCode');
     if (!codeEl) return;
     const isBold = (currentType === 'bold');
-    const tag = isBold ? 'CircleButton' : 'Button';
+    const variant = isBold ? 'bold' : 'button';
     const inner = isBold ? '<ArrowUpIcon />' : 'Upgrade to Pro';
     const strength = (currentStrengthPct / 100).toFixed(2);
-    const boldProp = isBold ? ' bold' : '';
-    codeEl.textContent = '<MetalFx color="' + currentColor + '" strength={' + strength + '}' + boldProp + '>\n  <' + tag + '>' + inner + '</' + tag + '>\n</MetalFx>';
+    const childAttrs = isBold ? ' aria-label="Send"' : '';
+    codeEl.textContent =
+      '<MetalFx preset="' + currentColor + '" variant="' + variant + '" strength={' + strength + '}>\n' +
+      '  <button' + childAttrs + '>' + inner + '</button>\n' +
+      '</MetalFx>';
   }
 
   function setActive(buttons, picked) {
