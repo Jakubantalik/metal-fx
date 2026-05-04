@@ -2334,12 +2334,9 @@
         </svg>
       </a>
     </nav>
-    <!-- Decorative header icon slot. The <img> referencing 'header icon.png' was
-         removed because the asset isn't shipped with the demo; the empty
-         .header-icon div preserves the page's negative-margin layout offsets
-         so the title stays anchored at the canonical position. To restore the
-         icon, drop a 414x276 PNG into demo/ and re-add the <img> tag. -->
-    <div class="header-icon" aria-hidden="true"></div>
+    <div class="header-icon" aria-hidden="true">
+      <img class="header-icon-img" src="header-icon.png" alt="" width="207" height="138" decoding="async" />
+    </div>
     <h1 class="title">Liquid metal</h1>
     <p class="subtitle-sm">Animated metal shader effect</p>
   </header>
