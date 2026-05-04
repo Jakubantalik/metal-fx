@@ -1,0 +1,39 @@
+name: Deploy demo to GitHub Pages
+
+# Redeploys https://metal.jakubantalik.com whenever main changes.
+# The artifact is the entire /demo directory (static HTML — no build step
+# needed because the demo bundles its own canonical engine inline).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+  contents: read
+
+# Allow only one in-flight Pages deployment at a time. New runs cancel the
+# previous one so the latest commit always wins.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./demo
+      - id: deploy
+        uses: actions/deploy-pages@v4

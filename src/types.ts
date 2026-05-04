@@ -1,0 +1,110 @@
+import type { CSSProperties, ReactNode, HTMLAttributes, RefObject } from 'react';
+
+/**
+ * Variant for the metal effect.
+ * - 'button' (default): pill-shaped 134×40 baseline with shaderScale 1.6
+ * - 'bold': compact 32×32 circle baseline with shaderScale 1.3
+ *
+ * In practice the wrapped child's measured dimensions drive the visible size —
+ * the variant only controls the shader sampling scale and ring thickness.
+ */
+export type MetalFxVariant = 'button' | 'bold';
+
+/**
+ * Theme mode for the metal effect.
+ * `auto` follows the document's `prefers-color-scheme`.
+ */
+export type MetalFxTheme = 'dark' | 'light' | 'auto';
+
+/**
+ * Bundled preset names. Each preset ships both a dark and light mode block.
+ */
+export type MetalFxPreset = 'chromatic' | 'silver' | 'gold';
+
+/**
+ * Props for the MetalFx React component.
+ */
+export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
+  /**
+   * The single host element to wrap with the metal effect. Must be a single
+   * React node (button, anchor, div, ...). MetalFx measures this element each
+   * frame via `ResizeObserver` and paints its canvas + glow on top.
+   */
+  children: ReactNode;
+
+  /**
+   * Variant — controls the shader sampling scale + ring width.
+   * - `button` (default): pill-style ring at 1 px wide, scale 1.6
+   * - `bold`: compact circle with a 2 px ring, scale 1.3
+   */
+  variant?: MetalFxVariant;
+
+  /**
+   * Color preset. All three presets ship both dark and light mode tunings —
+   * `theme` picks the right side at runtime.
+   * @default 'chromatic'
+   */
+  preset?: MetalFxPreset;
+
+  /**
+   * Theme mode. 'auto' resolves via `matchMedia('(prefers-color-scheme: dark)')`.
+   * @default 'dark'
+   */
+  theme?: MetalFxTheme;
+
+  /**
+   * Effect strength (0..1). Multiplies the shader bitmap opacity and the glow
+   * SVG alpha. The shader continues to animate at full intensity at any value;
+   * only the rendered alpha onto the host is scaled. Lighter values let the
+   * underlying child surface show through more strongly.
+   * @default 1
+   */
+  strength?: number;
+
+  /**
+   * Pause the shader animation. The visible canvas keeps the last painted
+   * frame so the metal silhouette stays on screen.
+   * @default false
+   */
+  paused?: boolean;
+
+  /**
+   * Optional explicit border radius (CSS px). When omitted, MetalFx reads the
+   * computed border-radius of the wrapped child each resize.
+   */
+  borderRadius?: number;
+
+  /**
+   * When true, MetalFx normalizes the host element's outer chrome (border /
+   * outline / box-shadow) so user-provided component styles don't clash with
+   * the metal ring. Inner fills, typography, and content remain untouched.
+   * @default true
+   */
+  normalizeHostStyles?: boolean;
+
+  /**
+   * Neighbour elements that should receive a soft proximity reflection of the
+   * metal effect. Reflections only render when the resolved theme is `dark` —
+   * pass-through in light mode (no DOM scan, no per-frame work).
+   *
+   * Pass refs to the sibling DOM elements you want to receive the reflection
+   * (chips next to a send button, search field next to an Upgrade pill, ...).
+   */
+  reflectionTargets?: ReadonlyArray<RefObject<HTMLElement | null>>;
+
+  /**
+   * Disable the wandering halo overlay. The shader ring still renders.
+   * @default false
+   */
+  disableGlow?: boolean;
+
+  /**
+   * Forwarded class name for the wrapper element.
+   */
+  className?: string;
+
+  /**
+   * Forwarded inline styles for the wrapper element.
+   */
+  style?: CSSProperties;
+}
