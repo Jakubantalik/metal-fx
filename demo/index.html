@@ -1367,6 +1367,12 @@
   html[data-theme="light"] .hero-toolbar-icon-btn:focus-visible {
     outline-color: rgba(0, 0, 0, 0.4);
   }
+  html[data-theme="light"] #heroArrow:hover {
+    background: rgba(0, 0, 0, 0.07);
+  }
+  html[data-theme="light"] #heroArrow:focus-visible {
+    outline-color: rgba(0, 0, 0, 0.4);
+  }
 
   /* Mock chat input (Figma 270:4289). Outer shell stays transparent so the composer
      interior can use rgba(#1d1d1d, 0.7) per design — matches Figma’s inset fill layer. */
@@ -1512,6 +1518,23 @@
     width: 36px;
     height: 36px;
     border-radius: 18px;
+    /* Make the send arrow explicitly interactive (same hover/focus language
+       as the nearby 3-dot options button). */
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
+    color: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.2s ease;
+  }
+  #heroArrow:hover { background: rgba(255, 255, 255, 0.07); }
+  #heroArrow:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
   }
 
   /* Sections */
@@ -2380,7 +2403,7 @@
               <span>Auto</span>
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11L10 8L7 5"/></svg>
             </div>
-            <div class="metal-fx metal-fx--circle metal-fx--bold" id="heroArrow" aria-label="Send (metal effect, bold variant)">
+            <button type="button" class="metal-fx metal-fx--circle metal-fx--bold" id="heroArrow" aria-label="Send (metal effect, bold variant)">
               <canvas class="metal-fx-canvas" id="heroArrow_canvas"></canvas>
               <div class="metal-fx-inner"></div>
               <span class="metal-fx-icon">
@@ -2389,7 +2412,7 @@
                   <polyline points="5 12 12 5 19 12"/>
                 </svg>
               </span>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -8630,6 +8653,16 @@ requestAnimationFrame(render);
   }
 
   function wireControls() {
+    // Hero chat send-arrow: make the metal-fx circle act as a real control.
+    // On click we focus the composer input so interaction is tangible in the demo.
+    const heroArrowBtn = document.getElementById('heroArrow');
+    const heroChatInput = document.querySelector('.mock-chat .mock-chat-input');
+    if (heroArrowBtn && heroChatInput) {
+      heroArrowBtn.addEventListener('click', function () {
+        heroChatInput.focus();
+      });
+    }
+
     const colorBtns = Array.prototype.slice.call(document.querySelectorAll('[data-color]'));
     colorBtns.forEach(function (btn) {
       btn.addEventListener('click', function () {
