@@ -6,6 +6,15 @@
 <title>Liquid metal — Animated metal shader effect</title>
 <meta name="description" content="A real-time WebGL metal shader effect for buttons and UI components. Three presets, one slider, instant chrome.">
 <meta name="theme-color" content="#070707">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Liquid metal — Animated metal shader effect">
+<meta property="og:description" content="A real-time WebGL metal shader effect for buttons and UI components. Three presets, one slider, instant chrome.">
+<meta property="og:image" content="og-image.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400&display=swap">
@@ -1116,16 +1125,13 @@
      resolution (207×138) for crisp 2x rendering on retina. */
   .header-icon {
     position: relative;
-    margin-top: -152px;
+    margin-top: -190px;
     margin-bottom: -20px;
     cursor: pointer;
-    overflow: hidden;
-    height: 100px;
   }
   .header-icon-img {
     display: block;
     position: relative;
-    top: -32px;
     transition: filter 0.5s cubic-bezier(0.4, 0, 0.2, 1),
                 transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     will-change: filter, transform;
@@ -1373,6 +1379,8 @@
   html[data-theme="light"] #heroArrow:focus-visible {
     outline-color: rgba(0, 0, 0, 0.4);
   }
+  /* Light-mode equivalent of the dark-mode `.metal-fx-inner` lift. */
+  html[data-theme="light"] #heroArrow:hover .metal-fx-inner { background: #f5f5f5; }
 
   /* Mock chat input (Figma 270:4289). Outer shell stays transparent so the composer
      interior can use rgba(#1d1d1d, 0.7) per design — matches Figma’s inset fill layer. */
@@ -1536,6 +1544,17 @@
     outline: 2px solid rgba(255, 255, 255, 0.5);
     outline-offset: 2px;
   }
+  /* Brighten the visible interior on hover. The wrapper-level
+     `background` rule above only shows in the 1 px gap between the
+     shader canvas and the inner fill, which is barely visible — the
+     real "fill" the user sees is `.metal-fx-inner` (dark mode #272727,
+     light mode #ffffff). Match the +0.03 alpha intensity step used on
+     the 3-dot `.hero-toolbar-icon-btn` (`rgba(255,255,255,0.04 → 0.07)`)
+     so the heroArrow hover reads with the same weight. */
+  #heroArrow .metal-fx-inner {
+    transition: background-color 0.2s ease;
+  }
+  #heroArrow:hover .metal-fx-inner { background: #2e2e2e; }
 
   /* Sections */
   .demo-body .section {
@@ -2313,14 +2332,32 @@
       padding: 32px 20px;
       border-radius: 20px;
     }
-    /* On mobile the placeholder's fixed 663x234 footprint is taller than
-       the collapsed row, so hide it rather than crop awkwardly. */
-    .example-row-placeholder { display: none; }
-    /* The toolbar's search field + dots button add ~289 px to the row width;
-       on phones we drop them and let the metal pill stand alone (matches the
-       template's compact mobile hero). */
-    .hero-toolbar-search,
-    .hero-toolbar-icon-btn { display: none; }
+    /* Keep the companion UI panel visible on mobile, but anchor it to the
+       right so the row's `overflow: hidden` crops only its left side. This
+       preserves the same "toolbar sits on top of a larger app surface"
+       composition without restructuring the toolbar itself. */
+    .example-row-placeholder {
+      display: block;
+      left: auto;
+      right: 24px;
+      top: auto;
+      bottom: 0;
+    }
+    /* Desktop pins the toolbar to absolute coords (left: 192, top: 160) so
+       the Figma layout maths work out. On mobile we DON'T restructure the
+       toolbar (no wrap, no flex-direction change) — the search field, pill,
+       and dots button stay in their canonical single-row layout. Instead we
+       re-anchor the whole strip to the row's RIGHT edge and rely on the
+       row's existing `overflow: hidden` to crop the left-extending search
+       field. Result: the metal pill (the demo's hero) and the dots button
+       stay fully visible on the right, while the search field bleeds off-
+       screen to the left to suggest the app surface continues there. */
+    .examples-section > .example-row-full:has(.hero-toolbar) .hero-toolbar {
+      left: auto;
+      right: 44px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
     .mock-chat { width: 100%; }
     .playground-controls {
       flex-wrap: wrap;
@@ -2329,7 +2366,16 @@
     }
     .playground-preview {
       padding: 32px 16px;
-      min-height: 240px;
+      /* Must stay >= desktop's 304px so `.playground-play-toggle`
+         (`top: calc(50% + 90px)`, 32px tall) doesn't overshoot the
+         preview's bottom edge and get clipped on phones. */
+      min-height: 304px;
+    }
+    /* Pull the play toggle 20 px higher on phones — the desktop
+       `calc(50% + 90px)` offset still landed it tight against the
+       preview's bottom rim on small viewports. */
+    .playground-play-toggle {
+      top: calc(50% + 20px + 50px);
     }
     .code-block code { font-size: 12px; line-height: 20px; }
   }
@@ -2358,10 +2404,10 @@
       </a>
     </nav>
     <div class="header-icon" aria-hidden="true">
-      <img class="header-icon-img" src="header-icon.png" alt="" width="207" height="138" decoding="async" />
+      <img class="header-icon-img" src="header.png" alt="" width="207" height="138" decoding="async" />
     </div>
     <h1 class="title">Liquid metal</h1>
-    <p class="subtitle-sm">Animated metal shader effect</p>
+    <p class="subtitle-sm">Animated liquid metal border component</p>
   </header>
 
   <section class="examples-section" aria-label="Effect demonstrations">
@@ -8702,6 +8748,60 @@ requestAnimationFrame(render);
       // Initialize glow strength from the slider's default value (100%)
       const initialStrength = parseInt(strInput.value, 10) || 100;
       _setGlowStrengthMul(initialStrength / 100);
+
+      // Manual pointer-driven drag. The native `<input type="range">` has a
+      // `0 × 0` thumb (so the whole pill reads as the drag surface) — iOS
+      // Safari and some Android browsers won't continuously track touch
+      // drags against a zero-sized thumb, so they tap-set the value once
+      // and then ignore the rest of the gesture. Pointer Events let us
+      // implement drag explicitly: on `pointerdown` we capture the pointer
+      // on the input, then translate every `pointermove` `clientX` into a
+      // value via the track's bounding rect and dispatch a synthetic
+      // `input` event so the existing listener (above) handles fill width,
+      // label, glow, and code refresh. Mouse drags get the same path —
+      // consistent across input modalities — while keyboard arrow nudges
+      // still flow through the native input untouched (we only intercept
+      // `pointerdown`, not `keydown`). `e.preventDefault()` on pointerdown
+      // suppresses the native range drag so we don't double-fire `input`. */
+      const strTrack = strInput.closest('.strength-track');
+      if (strTrack) {
+        let dragPid = null;
+        function pctFromClientX(clientX) {
+          const rect = strTrack.getBoundingClientRect();
+          if (rect.width <= 0) return parseInt(strInput.value, 10) || 0;
+          const min = parseFloat(strInput.min) || 0;
+          const max = parseFloat(strInput.max) || 100;
+          const step = parseFloat(strInput.step) || 1;
+          const t = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+          const raw = min + (max - min) * t;
+          return Math.round(raw / step) * step;
+        }
+        function applyFromEvent(e) {
+          const v = pctFromClientX(e.clientX);
+          if (String(v) !== strInput.value) {
+            strInput.value = String(v);
+            strInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }
+        strInput.addEventListener('pointerdown', function (e) {
+          if (e.button !== undefined && e.button !== 0) return;
+          dragPid = e.pointerId;
+          try { strInput.setPointerCapture(e.pointerId); } catch (err) {}
+          applyFromEvent(e);
+          e.preventDefault();
+        });
+        strInput.addEventListener('pointermove', function (e) {
+          if (e.pointerId !== dragPid) return;
+          applyFromEvent(e);
+        });
+        function endDrag(e) {
+          if (e.pointerId !== dragPid) return;
+          try { strInput.releasePointerCapture(e.pointerId); } catch (err) {}
+          dragPid = null;
+        }
+        strInput.addEventListener('pointerup', endDrag);
+        strInput.addEventListener('pointercancel', endDrag);
+      }
     }
     // Make the per-theme default strength helper available across this scope
     // (boot + theme toggle both call it). Light mode defaults to 95% per request;
