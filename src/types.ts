@@ -3,12 +3,12 @@ import type { CSSProperties, ReactNode, HTMLAttributes, RefObject } from 'react'
 /**
  * Variant for the metal effect.
  * - 'button' (default): pill-shaped 134×40 baseline with shaderScale 1.6
- * - 'bold': compact 32×32 circle baseline with shaderScale 1.3
+ * - 'circle': compact 32×32 circle baseline with shaderScale 1.3
  *
  * In practice the wrapped child's measured dimensions drive the visible size —
  * the variant only controls the shader sampling scale and ring thickness.
  */
-export type MetalFxVariant = 'button' | 'bold';
+export type MetalFxVariant = 'button' | 'circle';
 
 /**
  * Theme mode for the metal effect.
@@ -35,7 +35,7 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
   /**
    * Variant — controls the shader sampling scale + ring width.
    * - `button` (default): pill-style ring at 1 px wide, scale 1.6
-   * - `bold`: compact circle with a 2 px ring, scale 1.3
+   * - `circle`: compact circle with a 2 px ring, scale 1.3
    */
   variant?: MetalFxVariant;
 

@@ -5,9 +5,9 @@
  *   z=0  .metal-fx-canvas       — shader bitmap (centre punched)
  *   z=1  .metal-fx-inner        — TRANSPARENT inset spacer that defines where
  *                                 the metal ring meets the interior (inset:3
- *                                 for Button, 1-2 px for Bold). The wrapper bg
+ *                                 for Button, 1-2 px for Circle). The wrapper bg
  *                                 propagates through to the punched centre —
- *                                 see "Single-surface background" below. Bold's
+ *                                 see "Single-surface background" below. Circle's
  *                                 1-px dark hairline is a `box-shadow: inset`
  *                                 on this same element and paints regardless
  *                                 of background.
@@ -34,7 +34,7 @@
  * darker / lighter rim mismatching the new interior tone. The fix is to make
  * the inner div transparent so the wrapper bg is the only surface tone in
  * the interior, collapsing the two surfaces into one. Consumers now override
- * a single colour (the wrapper) and the centre follows automatically. Bold's
+ * a single colour (the wrapper) and the centre follows automatically. Circle's
  * inset box-shadow hairline is unaffected because `inset` shadows paint
  * regardless of the host's background.
  */
@@ -106,7 +106,7 @@ const CSS = /* css */ `
 }
 
 /* The inner spacer — defines the inset geometry where the metal ring meets
-   the interior (3 px for Button, 1-2 px for Bold) and carries the Bold dark
+   the interior (3 px for Button, 1-2 px for Circle) and carries the Circle dark
    hairline ('box-shadow: inset' rules below). Intentionally transparent so
    the wrapper's background propagates through to the punched shader centre,
    giving consumers a single surface tone to override. See "Single-surface
@@ -125,17 +125,17 @@ const CSS = /* css */ `
 .metal-fx-root[data-variant='button'][data-shape='circle'] .metal-fx-inner {
   border-radius: calc(var(--mfx-radius, 16px) - 3px);
 }
-.metal-fx-root[data-variant='bold'][data-shape='pill'] .metal-fx-inner {
+.metal-fx-root[data-variant='circle'][data-shape='pill'] .metal-fx-inner {
   inset: 1px;
   border-radius: calc(var(--mfx-radius, 20px) - 1px);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
-.metal-fx-root[data-variant='bold'][data-shape='circle'] .metal-fx-inner {
+.metal-fx-root[data-variant='circle'][data-shape='circle'] .metal-fx-inner {
   inset: 2px;
   border-radius: calc(var(--mfx-radius, 16px) - 2px);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
-/* Bold-variant hairline alpha — light mode.
+/* Circle-variant hairline alpha — light mode.
    Source-of-truth: index.html L2261-2267. The 0.45-alpha black inset that
    reads as a single-pixel frame against the dark interior is too heavy
    on a #ffffff inner: it ends up looking like a hard 2-px black ring
@@ -145,8 +145,8 @@ const CSS = /* css */ `
    and border-radius values because — unlike index.html — our renderer
    does NOT overscan the canvas in light mode, so there is no 1-px gap
    between inner element and shader to compensate for. */
-.metal-fx-root[data-theme='light'][data-variant='bold'][data-shape='pill'] .metal-fx-inner,
-.metal-fx-root[data-theme='light'][data-variant='bold'][data-shape='circle'] .metal-fx-inner {
+.metal-fx-root[data-theme='light'][data-variant='circle'][data-shape='pill'] .metal-fx-inner,
+.metal-fx-root[data-theme='light'][data-variant='circle'][data-shape='circle'] .metal-fx-inner {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
@@ -158,13 +158,13 @@ const CSS = /* css */ `
    ring; per-frame opacity attributes on each inner group still drive the
    independent fade-in / fade-out cycles for the halo and the catch-light.
 
-   Why a single SVG: the bold variant anchors halo + catch-light at the same
+   Why a single SVG: the circle variant anchors halo + catch-light at the same
    perimeter point, so they overlap in the bright zone. Two separately-
    screened SVGs would double-screen the overlap (A + B + C - AB - AC -
    BC + ABC instead of A + B + C - AB - AC once both groups composite
    in source-over inside one SVG and then screen against the host once).
-   That overlap looked muted versus canonical specifically on the bold
-   circle where both layers travel together.
+   That overlap looked muted versus canonical specifically on the circle
+   variant where both layers travel together.
 
    Source-of-truth opacity: #btnGlowSvg drops to 0.7 in dark and 0.2746 in
    light (index.html L632/L643). */
@@ -192,11 +192,11 @@ const CSS = /* css */ `
   opacity: 0.2746;
   filter: saturate(5.355) brightness(0.78);
 }
-/* Bold light-mode small circles (e.g. 36×36 send button): the geometrically
+/* Circle light-mode small variants (e.g. 36×36 send button): the geometrically
    shrunk halo loses density when multiplied against #ffffff. Mirror the
    canonical override at index.html L2316 — bump saturation + drop brightness
    so the small glow holds together visually. */
-.metal-fx-root[data-variant='bold'][data-shape='circle'][data-theme='light'] .metal-fx-glow-svg {
+.metal-fx-root[data-variant='circle'][data-shape='circle'][data-theme='light'] .metal-fx-glow-svg {
   filter: saturate(7.5) brightness(0.6);
 }
 
@@ -220,15 +220,20 @@ const CSS = /* css */ `
   border: 0 !important;
   outline: 0 !important;
   box-shadow: none !important;
-  /* Stretch the host child to fill the metal frame so its hit-area covers the
-     whole pill/circle. Padding/margins on the child stay user-controlled. */
-  width: 100%;
-  height: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.metal-fx-root[data-normalize='true'] .metal-fx-content > * {
+  /* Sizing: we deliberately DO NOT force \`width: 100%; height: 100%\` on the
+     child here. That used to be the contract ("the wrapper is the visible
+     button surface; the child stretches to fill it"), but it created a cyclic
+     percentage dependency: the wrapper is \`inline-flex\` with no intrinsic
+     size, .metal-fx-content is \`width/height: 100%\` of the wrapper, and the
+     child was \`100%\` of .metal-fx-content. With nothing breaking the cycle,
+     icon-only / class-sized children collapsed.
+
+     The new contract: the child sizes itself (intrinsic content, CSS class,
+     or inline style — all work), and the wrapper's \`inline-flex\` wraps it
+     tightly. Consumers who want a metal frame BIGGER than the child (e.g.
+     padding around an icon) size <MetalFx style={{ width, height }}> AND
+     explicitly set width/height on the child to fill (or accept that the
+     child renders at its intrinsic size, centered). */
   color: inherit;
   font: inherit;
 }

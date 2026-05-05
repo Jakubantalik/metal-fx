@@ -106,11 +106,11 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
 
   const resolvedTheme = useResolvedTheme(theme);
   themeRef.current = resolvedTheme;
-  /** Variant -> shape mapping. The Bold variant is rendered as a circle, the
+  /** Variant -> shape mapping. The Circle variant is rendered as a circle, the
    *  Button variant as a pill. The actual silhouette comes from the wrapped
    *  child's measured box, this mapping just feeds the engine + CSS data
    *  attributes for shape-specific tuning. */
-  const shape: 'pill' | 'circle' = variant === 'bold' ? 'circle' : 'pill';
+  const shape: 'pill' | 'circle' = variant === 'circle' ? 'circle' : 'pill';
 
   const glowEnabled = !disableGlow;
 
@@ -160,9 +160,9 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       // host sizes (e.g. a 36.5 × 36.5 box from a flex parent) push the
       // perimeter walk through a microscopic top/bottom edge that breaks the
       // "perfect circle" assumption — the path-builder's `topLen = w − 2r`
-      // becomes 0.5 instead of 0, so the bold's wandering anchor + catch-
-      // light snap onto a stadium-with-tiny-flats instead of the visible
-      // circular silhouette. Whole pixels here keeps W=H=2R for the bold
+      // becomes 0.5 instead of 0, so the circle variant's wandering anchor +
+      // catch-light snap onto a stadium-with-tiny-flats instead of the visible
+      // circular silhouette. Whole pixels here keeps W=H=2R for the circle
       // variant on every host, regardless of the parent's flex math. */
       const cssWidth = Math.max(1, Math.round(rect.width));
       const cssHeight = Math.max(1, Math.round(rect.height));
@@ -187,7 +187,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         }
         return initialWrapperRadiusRef.current;
       })();
-      // Bold variant intentionally renders as a circle — clamp the corner
+      // Circle variant intentionally renders as a circle — clamp the corner
       // radius to at least half the smaller side so the host silhouette
       // is a true circle even when the consumer passes a smaller radius
       // than the side count (e.g. `borderRadius={16}` on a 40 × 40 host).
@@ -244,7 +244,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         // rules in styles.ts (`calc(var(--mfx-radius, ...) - inset)`)
         // recompute the inner div + ::before / ::after radii after every
         // size change. Without this, a host that grows past the original
-        // measured size keeps its old `--mfx-radius` and the bold's inner
+        // measured size keeps its old `--mfx-radius` and the circle's inner
         // hairline + the white outer hairline drift away from the visible
         // silhouette curve.
         root.style.setProperty('--mfx-radius', `${next.cornerRadius}px`);
@@ -322,7 +322,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   // at strength=0.92" is now the visual 100 % for buttons (i.e. the new full-
   // strength look reads slightly softer than the old raw-1.0 ceiling, which
   // tended to flash too hot on the canonical 134 × 40 pill against a dark
-  // surface). The Bold variant is unaffected and continues to map the user's
+  // surface). The Circle variant is unaffected and continues to map the user's
   // strength 1:1 onto the renderer + glow opacity, so the 36 × 36 circle
   // still hits its full canonical intensity at strength = 1. Mapping happens
   // here at the consumer-facing API boundary, so the engine keeps a single
@@ -350,7 +350,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
 
   // Push corner radius to a CSS var so the inset-aware rules in styles.ts can
   // compute the inner div's radius (= outer − inset). We always write the
-  // ENGINE's resolved radius (which the bold variant clamps to half the
+  // ENGINE's resolved radius (which the circle variant clamps to half the
   // smaller side) so the inner div stays a true circle even when the user
   // passes `borderRadius` smaller than half the host. Visible host shape
   // also uses the resolved radius for the same reason — including when

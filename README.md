@@ -106,6 +106,32 @@ Reflections are skipped automatically when the resolved theme is `light` — no 
 
 The component renders a transparent placeholder during SSR and only mounts the WebGL pipeline after hydration on the client. No flash of broken effect, no SSR errors.
 
+## Sizing
+
+`MetalFx` does not force any dimensions onto the wrapped child — the wrapper sizes itself to whatever the child renders. Style your child the way you normally would (intrinsic content, CSS class, or inline style):
+
+```tsx
+// Pattern 1 (recommended): size the child.
+<MetalFx variant="circle">
+  <button style={{ width: 36, height: 36 }} aria-label="Send">↑</button>
+</MetalFx>
+
+<MetalFx>
+  <button className="rounded-full px-6 h-10">Upgrade to Pro</button>
+</MetalFx>
+```
+
+If you want a metal frame larger than the child (e.g. padding around an icon), size the wrapper instead and explicitly stretch the child to fill:
+
+```tsx
+// Pattern 2: size the wrapper, child fills.
+<MetalFx style={{ width: 36, height: 36 }} variant="circle">
+  <button style={{ width: '100%', height: '100%' }} aria-label="Send">↑</button>
+</MetalFx>
+```
+
+Both patterns work; pick whichever fits your layout. The wrapper is `display: inline-flex` so it lays out inline like a button.
+
 ## Custom border radius
 
 By default `MetalFx` reads the computed `border-radius` of the wrapped child each resize. Pass an explicit override when needed:
