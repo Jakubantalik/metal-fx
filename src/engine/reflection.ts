@@ -81,7 +81,7 @@ const BORDER_HILITE_PX = 1.0;
 const BORDER_HILITE_ALPHA = 0.044;
 /** Reference draw width on the neighbour. The canonical uses 235 CSS px
  *  (`PROX_REFLECT_UI_SEARCH_CSS_W`). For non-canonical anchor widths we
- *  scale by `cssW / 140` so a 36-px bold gets a 60-px wide draw rect (not
+ *  scale by `cssW / 140` so a 36-px circle gets a 60-px wide draw rect (not
  *  235) and density stays consistent across anchors. */
 const REF_DRAW_CSS_W = 235;
 /** Extra alpha on the BLURRED FILL only — canonical 2.535. Stroke /
@@ -89,8 +89,10 @@ const REF_DRAW_CSS_W = 235;
 const FILL_EXTRA_ALPHA = 2.535;
 /** −30 % on the main fill reflection only (canonical 0.7). */
 const FILL_OPACITY_MUL = 0.7;
-/** Additional fill-only attenuation (`boldFillAttenuation = 0.5`). */
-const FILL_BOLD_ATTENUATION = 0.5;
+/** Additional fill-only attenuation (matches canonical engine's
+ *  `boldFillAttenuation = 0.5`; renamed to `CIRCLE` here to align with the
+ *  public `variant: 'circle'` API). */
+const FILL_CIRCLE_ATTENUATION = 0.5;
 
 /** HTML form-control tags whose UA shadow tree won't reliably host a
  *  positioned child div. */
@@ -747,7 +749,7 @@ export function paintReflections(): void {
     grad.addColorStop(1, `rgba(0,0,0,${GRAD_FAR})`);
 
     // Source draw rect — width scaled by `cssW / 140` so the canonical 235-px
-    // reference doesn't over-stretch small bold anchors. Vertical axis spans
+    // reference doesn't over-stretch small circle anchors. Vertical axis spans
     // the canvas height so the stroke pass still reaches the rim above /
     // below the host's near edge.
     const anchorCssW = sw / dpr;
@@ -803,7 +805,7 @@ export function paintReflections(): void {
       reflectionAlpha *
         FILL_EXTRA_ALPHA *
         FILL_OPACITY_MUL *
-        FILL_BOLD_ATTENUATION
+        FILL_CIRCLE_ATTENUATION
     );
     maskedFillPasses(
       ctx,

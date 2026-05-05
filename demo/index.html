@@ -2557,7 +2557,7 @@
         <span class="control-label">Type</span>
         <div class="control-options">
           <button class="tab-btn" type="button" role="radio" data-type="button" data-active="true" aria-checked="true" data-prox-reflect-target><span class="tab-btn-label">Button</span></button>
-          <button class="tab-btn" type="button" role="radio" data-type="bold" data-active="false" aria-checked="false" data-prox-reflect-target><span class="tab-btn-label">Bold</span></button>
+          <button class="tab-btn" type="button" role="radio" data-type="circle" data-active="false" aria-checked="false" data-prox-reflect-target><span class="tab-btn-label">Circle</span></button>
         </div>
       </div>
       <div class="control-group" role="radiogroup" aria-label="Color preset">
@@ -8628,13 +8628,13 @@ requestAnimationFrame(render);
   // ─── Type tab — pill ↔ circle in the playground preview ──────────────────
   /* Two playground types after the user collapsed the original three-tab set:
        - 'button' → 134 × 40 pill, "Upgrade to Pro" label, no metal-fx--bold
-       - 'bold'   → 32 × 32 circle, arrow-up icon, ALWAYS metal-fx--bold
+       - 'circle' → 32 × 32 circle, arrow-up icon, ALWAYS metal-fx--bold
      The plain non-bold circle was removed (the 1-px ring on a 32-px shell is
-     too thin to read), so 'bold' is now the canonical compact-component
-     variant. Any persisted/legacy 'circle' value is silently coerced to
-     'bold' so older bookmarks / hot-reloaded state still resolve. */
+     too thin to read), so 'circle' is now the canonical compact-component
+     variant. Any persisted/legacy 'bold' value is silently coerced to
+     'circle' so older bookmarks / hot-reloaded state still resolve. */
   function applyType(type) {
-    if (type === 'circle') type = 'bold';
+    if (type === 'bold') type = 'circle';
     currentType = type;
     const host = document.getElementById('pgFx');
     if (!host) return;
@@ -8642,35 +8642,35 @@ requestAnimationFrame(render);
     if (!inst) return;
     const oldGlow = host.querySelector('.metal-fx-glow-svg');
     if (oldGlow) oldGlow.remove();
-    const isBold = (type === 'bold');
-    host.classList.toggle('metal-fx--pill', !isBold);
-    host.classList.toggle('metal-fx--circle', isBold);
-    host.classList.toggle('metal-fx--bold', isBold);
+    const isCircle = (type === 'circle');
+    host.classList.toggle('metal-fx--pill', !isCircle);
+    host.classList.toggle('metal-fx--circle', isCircle);
+    host.classList.toggle('metal-fx--bold', isCircle);
     const label = host.querySelector('.metal-fx-label');
     const icon  = host.querySelector('.metal-fx-icon');
-    if (label) label.hidden = isBold;
-    if (icon)  icon.hidden  = !isBold;
-    const newW = isBold ? 32 : 134;
-    const newH = isBold ? 32 : 40;
-    const newR = isBold ? 16 : 20;
+    if (label) label.hidden = isCircle;
+    if (icon)  icon.hidden  = !isCircle;
+    const newW = isCircle ? 32 : 134;
+    const newH = isCircle ? 32 : 40;
+    const newR = isCircle ? 16 : 20;
     inst.cssW = newW;
     inst.cssH = newH;
     inst.cssR = newR;
-    inst.kind = isBold ? 'circle' : 'pill';
+    inst.kind = isCircle ? 'circle' : 'pill';
     // Light-mode overscan mirrors `.btn-shell canvas` in metal.html — `_resizeAuxCanvas`
     // sets bitmap and inline CSS dimensions to (newW + 2*o) × (newH + 2*o) where
     // `o = 1` in light, `0` in dark.
     _resizeAuxCanvas(inst);
-    // Bold zooms the shader IN by `BOLD_SHADER_SCALE` (1.3). Button (pill) type uses
+    // Circle zooms the shader IN by `BOLD_SHADER_SCALE` (1.3). Button (pill) type uses
     // `PILL_SHADER_SCALE` (1.6) per request — mirrors metal.html's dialed scale for this look.
-    inst.shaderScale = isBold ? BOLD_SHADER_SCALE : PILL_SHADER_SCALE;
+    inst.shaderScale = isCircle ? BOLD_SHADER_SCALE : PILL_SHADER_SCALE;
     // Re-author the glow SVG with the new variant's dimensions so the viewBox /
     // ring annulus / fade-mask radius all match the visible silhouette. See the
     // matching comment in `makeAuxFx` — passing dims through is what keeps the
-    // halo + catch-light on-rim when switching between pill and bold variants.
+    // halo + catch-light on-rim when switching between pill and circle variants.
     inst.glow = injectGlowSvg(host, inst.kind, 'pgFx', { w: newW, h: newH, r: newR });
     // The shader opacity + glow strength are now variant-dependent (Button is
-    // capped at 0.92, Bold is uncapped — see `applyCurrentPreset`). Re-apply
+    // capped at 0.92, Circle is uncapped — see `applyCurrentPreset`). Re-apply
     // the preset on type change so the cap toggles synchronously with the
     // tab swap; without this, the visual intensity wouldn't refresh until the
     // next preset/theme/strength interaction and the user would see a stale
@@ -8682,11 +8682,11 @@ requestAnimationFrame(render);
   function refreshPgCode() {
     const codeEl = document.getElementById('pgCode');
     if (!codeEl) return;
-    const isBold = (currentType === 'bold');
-    const variant = isBold ? 'bold' : 'button';
-    const inner = isBold ? '<ArrowUpIcon />' : 'Upgrade to Pro';
+    const isCircle = (currentType === 'circle');
+    const variant = isCircle ? 'circle' : 'button';
+    const inner = isCircle ? '<ArrowUpIcon />' : 'Upgrade to Pro';
     const strength = (currentStrengthPct / 100).toFixed(2);
-    const childAttrs = isBold ? ' aria-label="Send"' : '';
+    const childAttrs = isCircle ? ' aria-label="Send"' : '';
     codeEl.textContent =
       '<MetalFx preset="' + currentColor + '" variant="' + variant + '" strength={' + strength + '}>\n' +
       '  <button' + childAttrs + '>' + inner + '</button>\n' +

@@ -78,13 +78,13 @@ const BTN_GLOW_EXTRA_FADE_R = 13.0;
 /** Source-button stroke that the canonical chromatic / silver / gold presets
  *  all default to (`btnStrokeWidth: 1` — index.html L7981 / L7993 / L8010 /
  *  L8022 / L8039 / L8051). Canonical's `getBtnGlowExtraScale()` is
- *  `getBtnStrokePx() / 3`, so all aux instances (pill OR bold) inherit the
+ *  `getBtnStrokePx() / 3`, so all aux instances (pill OR circle) inherit the
  *  same 1/3 catch-light scale regardless of the visible ring width. We
  *  match that exactly: a single constant so both variants render the same
  *  proportional dot the canonical demo shows.
  *
- *  Tying scale to per-instance ringCssPx (1 for pill, 2 for bold) doubled the
- *  bold's catch-light vs canonical, which read as a chunky elongated capsule
+ *  Tying scale to per-instance ringCssPx (1 for pill, 2 for circle) doubled the
+ *  circle's catch-light vs canonical, which read as a chunky elongated capsule
  *  that "looked like a pill, not a circle" on the 36 × 36 host because the
  *  capsule's blur skirt was wider than the silhouette's curvature. */
 const EXTRA_SCALE = 1 / 3;
@@ -193,7 +193,7 @@ export interface GlowHandles {
  *  the catch-light group, sharing one region mask — direct port of canonical
  *  `_buildGlowSvgInner` (index.html L8078). The previous two-SVG split was
  *  visually equivalent ONLY when the halo and catch-light didn't overlap;
- *  for the bold variant they're driven from the SAME perimeter anchor, so
+ *  for the circle variant they're driven from the SAME perimeter anchor, so
  *  applying `mix-blend-mode: screen` twice (one per SVG) over the shared
  *  region produces a noticeably darker composite than canonical's single
  *  screen pass. Folding both groups into one SVG lets the inner compositor
@@ -628,11 +628,11 @@ export function updateGlow(
   // Mirrors the per-frame `extraHalfLen` / `extraOutward` math in
   // `updateAuxGlow()` (index.html L8448–L8451): `extraScale = source-button
   // stroke / 3` shrinks the catch-light slice with the source ring, while
-  // the perimeter `ratio` further compresses it so a 36 × 36 bold gets a
+  // the perimeter `ratio` further compresses it so a 36 × 36 circle gets a
   // tiny ~1 px arc-length capsule (canonical match) and a 134 × 40 pill
   // gets a wider ~3 px one. Outward shift scales by `ratio` only — same as
   // canonical — so the path centerline rides ~1 px outside the ring for
-  // the pill and only ~0.35 px outside for the bold, keeping the blur skirt
+  // the pill and only ~0.35 px outside for the circle, keeping the blur skirt
   // from cresting past the small circle's right corners.
   const extraHalfLen = Math.max(0.6, BTN_GLOW_EXTRA_HALFLEN * EXTRA_SCALE * ratio);
   const extraOutward = BTN_GLOW_EXTRA_OUTWARD * ratio;

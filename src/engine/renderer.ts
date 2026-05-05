@@ -10,7 +10,7 @@
  *     dimensions are computed). Each instance copies a centred CROP of the
  *     GL canvas onto its own 2D canvas using the SAME per-CSS-px ratio as
  *     the canonical pill, then divides the source window by the instance's
- *     `shaderScale` to zoom features when the host is smaller (bold circles)
+ *     `shaderScale` to zoom features when the host is smaller (circle hosts)
  *     or to dial scale to taste (Button variant uses `1.6`).
  *   • Each instance then punches a rounded-rect inner hole on its own
  *     canvas so only the outer ring of the shader survives. The visible
@@ -45,9 +45,10 @@ export const CANONICAL_PILL_H = 40;
 /** Default per-instance source-window divisor for the Button variant (pill).
  *  Matches `index.html`'s `PILL_SHADER_SCALE`. Higher = more zoomed-in. */
 export const PILL_SHADER_SCALE = 1.6;
-/** Default per-instance source-window divisor for the Bold variant (circle).
- *  Matches `index.html`'s `BOLD_SHADER_SCALE`. */
-export const BOLD_SHADER_SCALE = 1.3;
+/** Default per-instance source-window divisor for the Circle variant.
+ *  Matches `index.html`'s `BOLD_SHADER_SCALE` (legacy name preserved in the
+ *  canonical engine for parity, but exported under the Circle name here). */
+export const CIRCLE_SHADER_SCALE = 1.3;
 
 /** Shared GL state. Created lazily on the first instance, destroyed when the
  *  last instance unmounts so a long-lived SPA doesn't hold a WebGL slot
@@ -344,7 +345,7 @@ export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
     ringCssPx: opts.ringCssPx ?? (opts.kind === 'circle' ? 2 : 1),
     shaderScale:
       opts.shaderScale ??
-      (opts.kind === 'circle' ? BOLD_SHADER_SCALE : PILL_SHADER_SCALE),
+      (opts.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE),
     opacityMul: opts.opacityMul ?? 1,
     visible: true,
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
@@ -398,7 +399,7 @@ export function updateInstance(
     inst.kind = patch.kind;
     if (patch.shaderScale === undefined) {
       inst.shaderScale =
-        patch.kind === 'circle' ? BOLD_SHADER_SCALE : PILL_SHADER_SCALE;
+        patch.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE;
     }
     if (patch.ringCssPx === undefined) {
       inst.ringCssPx = patch.kind === 'circle' ? 2 : 1;
@@ -491,7 +492,7 @@ function punchInnerHole(inst: MetalFxInstance): void {
  *  exactly: pick the same per-CSS-pixel ratio as the canonical 140×40
  *  `btnDisplay` (so 1 CSS px on this aux samples the same shader region as
  *  1 CSS px on the canonical pill), then divide by `shaderScale` to zoom
- *  features for smaller hosts (bold) or to taste (Button variant). */
+ *  features for smaller hosts (circle) or to taste (Button variant). */
 function copyShaderToInstance(inst: MetalFxInstance): void {
   if (!SHARED) return;
   const renderer = SHARED;
@@ -522,7 +523,7 @@ function copyShaderToInstance(inst: MetalFxInstance): void {
   // sampler. Direct port of `btnGlowSampleBuf = btnDisplayCtx.getImageData(...)`
   // from index.html L7654 — the canonical engine reads from the SAME 2D
   // bitmap each frame BEFORE punching the centre hole, so the perimeter
-  // sample at e.g. (cssX=18, cssY=0) on a 36×36 bold reads from buffer
+  // sample at e.g. (cssX=18, cssY=0) on a 36×36 circle reads from buffer
   // index `(0 * 72 + 36) * 4` directly, with no GL-fb crop math involved.
   // Skipping the readback when neither glow nor reflection consumers ever
   // sample isn't worth the bookkeeping — the per-instance buffer is small

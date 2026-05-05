@@ -33,7 +33,7 @@ The component wraps a single child host element, measures it, and paints an anim
   <button>Upgrade to Pro</button>
 </MetalFx>
 
-<MetalFx variant="bold">    {/* Compact circle, 2 px ring, scale 1.3 */}
+<MetalFx variant="circle">  {/* Compact circle, 2 px ring, scale 1.3 */}
   <button>↑</button>
 </MetalFx>
 ```
@@ -86,7 +86,7 @@ const chipRef = useRef<HTMLButtonElement>(null);
 
 <>
   <button ref={chipRef}>Tools</button>
-  <MetalFx variant="bold" reflectionTargets={[chipRef]}>
+  <MetalFx variant="circle" reflectionTargets={[chipRef]}>
     <button ref={sendRef} aria-label="Send">↑</button>
   </MetalFx>
 </>

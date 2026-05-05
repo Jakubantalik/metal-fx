@@ -15,7 +15,7 @@ export {
   CANONICAL_PILL_W,
   CANONICAL_PILL_H,
   PILL_SHADER_SCALE,
-  BOLD_SHADER_SCALE,
+  CIRCLE_SHADER_SCALE,
   type MetalFxInstance,
 } from './renderer';
 
