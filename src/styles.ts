@@ -233,9 +233,17 @@ const CSS = /* css */ `
      tightly. Consumers who want a metal frame BIGGER than the child (e.g.
      padding around an icon) size <MetalFx style={{ width, height }}> AND
      explicitly set width/height on the child to fill (or accept that the
-     child renders at its intrinsic size, centered). */
-  color: inherit;
-  font: inherit;
+     child renders at its intrinsic size, centered).
+
+     Typography is intentionally NOT touched. We used to apply
+     \`color: inherit; font: inherit;\` here to "match" the wrapper, but
+     \`font: inherit\` is a shorthand that overrides font-family, font-size,
+     font-weight, AND line-height on the child — which (a) shrank the
+     button height (line-height changes propagate through the flex
+     content box) and (b) scaled em-based icons / font-icons inside the
+     child to whatever the wrapper inherited. The wrapper now stays out
+     of the child's typography entirely; consumers who want typographic
+     normalization can apply it themselves on the child element. */
 }
 
 /* ─── Proximity reflection (dark mode only) ───────────────────────────────
