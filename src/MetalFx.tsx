@@ -96,6 +96,13 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   /** Latest resolved theme — read by the per-frame glow tick so theme
    *  switches take effect without rebuilding the RAF closure. */
   const themeRef = useRef<'dark' | 'light'>('dark');
+  /** Author-supplied wrapper radius captured ONCE on mount, before any of
+   *  our own writes to `root.style.borderRadius`. Used as the fallback
+   *  when the wrapped child reports `0` (e.g. consumer styles `<MetalFx>`
+   *  directly via `style={{ borderRadius: ... }}` instead of styling the
+   *  child). Without this snapshot the auto-detect path would later read
+   *  back our own write and create a feedback loop. */
+  const initialWrapperRadiusRef = useRef<number>(0);
 
   const resolvedTheme = useResolvedTheme(theme);
   themeRef.current = resolvedTheme;
@@ -124,14 +131,27 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     else resumeShared();
   }, [paused]);
 
-  // Mount: measure the host (the WRAPPER, since that's the visible surface)
-  // and create the per-instance renderer state.
+  // Mount: measure the host (reading the wrapped CHILD's border-radius so
+  // a consumer can style their own button/element and have the wrapper
+  // visually follow) and create the per-instance renderer state.
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     const root = rootRef.current;
     const glowHost = glowHostRef.current;
     if (!canvas || !root) return;
     if (glowEnabled && !glowHost) return;
+
+    // Snapshot any author-supplied wrapper radius BEFORE we ever write to
+    // `root.style.borderRadius`. This preserves the case where a consumer
+    // styles `<MetalFx>` directly via `style={{ borderRadius: 18 }}`
+    // instead of styling the child — without the snapshot, our own write
+    // below would replace the value on the next ResizeObserver tick and
+    // we'd lose the authored radius forever.
+    {
+      const computed = getComputedStyle(root);
+      const parsed = parseFloat(computed.borderTopLeftRadius);
+      initialWrapperRadiusRef.current = Number.isFinite(parsed) ? parsed : 0;
+    }
 
     const measure = () => {
       const rect = root.getBoundingClientRect();
@@ -146,11 +166,26 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       // variant on every host, regardless of the parent's flex math. */
       const cssWidth = Math.max(1, Math.round(rect.width));
       const cssHeight = Math.max(1, Math.round(rect.height));
+      // Resolution order:
+      //   1. `borderRadius` prop is a number → explicit override wins.
+      //   2. Wrapped child's computed `border-top-left-radius` → matches
+      //      the README contract that consumers style their own host
+      //      element (e.g. `<button style={{ borderRadius: 12 }}>`).
+      //   3. Author-supplied wrapper radius captured at mount → covers
+      //      the `<MetalFx style={{ borderRadius: 18 }}>` case.
+      //   4. `0`.
+      // We deliberately do NOT read from `root` here; we already wrote
+      // our own resolved value back to `root.style.borderRadius` on a
+      // previous tick, so reading it would create a feedback loop.
       const rawRadius = (() => {
         if (typeof borderRadius === 'number') return borderRadius;
-        const computed = getComputedStyle(root);
-        const parsed = parseFloat(computed.borderTopLeftRadius);
-        return Number.isFinite(parsed) ? parsed : 0;
+        const childEl = contentRef.current?.firstElementChild as HTMLElement | null;
+        if (childEl) {
+          const childComputed = getComputedStyle(childEl);
+          const parsed = parseFloat(childComputed.borderTopLeftRadius);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+        return initialWrapperRadiusRef.current;
       })();
       // Bold variant intentionally renders as a circle — clamp the corner
       // radius to at least half the smaller side so the host silhouette
@@ -174,6 +209,15 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       kind: shape,
       onAfterFrame: scheduleReflectionPaint,
     });
+    // Mirror the resolved radius onto the wrapper on first paint so the
+    // wrapper background, ::before / ::after pseudos, .metal-fx-canvas
+    // (border-radius: inherit) and the glow host all paint as a rounded
+    // surface that matches the engine's masked silhouette. Without this,
+    // a child styled with `border-radius: 12` would round only the inner
+    // shader / inner div while the wrapper background paints a hard
+    // rectangle behind it.
+    root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
+    root.style.borderRadius = `${initial.cornerRadius}px`;
     if (glowEnabled && glowHost) {
       glowHandlesRef.current = injectGlow(glowHost, {
         width: initial.cssWidth,
@@ -204,9 +248,12 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         // hairline + the white outer hairline drift away from the visible
         // silhouette curve.
         root.style.setProperty('--mfx-radius', `${next.cornerRadius}px`);
-        if (typeof borderRadius === 'number') {
-          root.style.borderRadius = `${next.cornerRadius}px`;
-        }
+        // Always mirror to `border-radius` (not gated on numeric prop) so
+        // the wrapper's painted surface keeps tracking the resolved value
+        // even when it came from the wrapped child or the initial wrapper
+        // snapshot. The wrapper IS the visible card edge; this write is
+        // what makes the rounded silhouette read as a single surface.
+        root.style.borderRadius = `${next.cornerRadius}px`;
         if (glowEnabled && glowHost) {
           // Wipe + re-inject so the SVG viewBox matches the new dimensions.
           glowHost.innerHTML = '';
@@ -306,15 +353,15 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   // ENGINE's resolved radius (which the bold variant clamps to half the
   // smaller side) so the inner div stays a true circle even when the user
   // passes `borderRadius` smaller than half the host. Visible host shape
-  // also uses the resolved radius for the same reason.
+  // also uses the resolved radius for the same reason — including when
+  // the resolved value came from auto-detection on the wrapped child,
+  // not just from the explicit numeric prop.
   useEffect(() => {
     const root = rootRef.current;
     const inst = instanceRef.current;
     if (!root || !inst) return;
     root.style.setProperty('--mfx-radius', `${inst.cornerRadius}px`);
-    if (typeof borderRadius === 'number') {
-      root.style.borderRadius = `${inst.cornerRadius}px`;
-    }
+    root.style.borderRadius = `${inst.cornerRadius}px`;
   }, [borderRadius, resolvedTheme, variant]);
 
   const wrapperStyle = useMemo<CSSProperties>(
