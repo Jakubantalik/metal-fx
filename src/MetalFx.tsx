@@ -73,7 +73,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     children,
     variant = 'button',
     preset = 'chromatic',
-    theme = 'dark',
+    theme = 'auto',
     strength = 1,
     paused = false,
     borderRadius,

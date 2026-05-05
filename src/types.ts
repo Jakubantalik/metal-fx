@@ -12,7 +12,15 @@ export type MetalFxVariant = 'button' | 'circle';
 
 /**
  * Theme mode for the metal effect.
- * `auto` follows the document's `prefers-color-scheme`.
+ *
+ * - `auto` (default): follows the user's `prefers-color-scheme` and updates
+ *   live when the OS / browser theme changes (also gracefully falls back to
+ *   `dark` during SSR or when `matchMedia` is unavailable).
+ * - `dark`: pin to the dark-mode tunings regardless of system preference.
+ * - `light`: pin to the light-mode tunings regardless of system preference.
+ *
+ * Drive this from your app's theme state if you have a manual toggle that
+ * doesn't follow the OS — otherwise `auto` is the right default.
  */
 export type MetalFxTheme = 'dark' | 'light' | 'auto';
 
@@ -47,8 +55,10 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
   preset?: MetalFxPreset;
 
   /**
-   * Theme mode. 'auto' resolves via `matchMedia('(prefers-color-scheme: dark)')`.
-   * @default 'dark'
+   * Theme mode. `'auto'` (default) resolves via
+   * `matchMedia('(prefers-color-scheme: dark)')` and switches live when the
+   * OS theme changes. Pass `'dark'` or `'light'` to pin a specific mode.
+   * @default 'auto'
    */
   theme?: MetalFxTheme;
 

@@ -51,9 +51,18 @@ Three bundled palettes, each with a tuned dark and light mode block:
 ## Theme
 
 ```tsx
-<MetalFx theme="dark" />    {/* Dark backgrounds (default) */}
-<MetalFx theme="light" />   {/* Light backgrounds */}
-<MetalFx theme="auto" />    {/* Follows prefers-color-scheme */}
+<MetalFx theme="auto" />    {/* Follows prefers-color-scheme (default) */}
+<MetalFx theme="dark" />    {/* Pin to dark backgrounds */}
+<MetalFx theme="light" />   {/* Pin to light backgrounds */}
+```
+
+`auto` reads the OS / browser theme on mount and subscribes to live changes via `matchMedia('(prefers-color-scheme: dark)')`, so the metal frame switches over instantly when the user toggles their system theme. SSR-safe — the initial render falls back to `dark` and rehydrates to the resolved theme on the client.
+
+If your app has its own theme toggle that doesn't follow the OS, drive `theme` from your app state instead:
+
+```tsx
+const appTheme = useAppTheme(); // 'dark' | 'light'
+<MetalFx theme={appTheme}>...</MetalFx>
 ```
 
 ## Strength

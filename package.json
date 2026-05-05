@@ -1,6 +1,6 @@
 {
   "name": "metal-fx",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Animated WebGL metal shader effect for React buttons and UI components",
   "type": "module",
   "main": "dist/index.cjs.js",
