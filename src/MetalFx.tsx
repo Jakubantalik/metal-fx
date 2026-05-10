@@ -8,26 +8,58 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
+import type { MetalFxInstance } from './engine/renderer/core';
 import {
-  addReflectionTarget,
   createInstance,
   destroyInstance,
-  injectGlow,
   pauseShared,
-  removeReflectionTarget,
+  registerGlowInstance,
   resumeShared,
-  scheduleReflectionPaint,
+  setGlowCallback,
   setInstanceVisible,
   setSharedPreset,
-  updateGlow,
+  unregisterGlowInstance,
   updateInstance,
-  type MetalFxInstance,
-} from './engine';
+} from './engine/renderer/loop';
+import { injectGlow, updateGlow } from './engine/glow/glow';
+import { addReflectionTarget, removeReflectionTarget } from './engine/reflection/paint';
+import { scheduleReflectionPaint } from './engine/reflection/reflectionScheduler';
 import { ensureStylesInjected } from './styles';
 import type { MetalFxProps, MetalFxTheme } from './types';
 
-/** Resolve `theme: 'auto'` to a concrete `'dark' | 'light'` value, listening
- *  for system theme changes via `prefers-color-scheme`. */
+// Runs at module scope so styles exist before the first component render,
+// even in SSR-hydration scenarios where effects haven't fired yet.
+ensureStylesInjected();
+
+// Hoisted to avoid allocating new objects on every render.
+const CANVAS_STYLE: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
+const INNER_STYLE: CSSProperties = { position: 'absolute', inset: 3 };
+const GLOW_HOST_STYLE: CSSProperties = { position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, borderRadius: 'inherit' };
+
+// Maps each live instance to its SVG glow handles and a theme ref.
+// Keyed by instance (not component) because the same component can be
+// remounted with a new instance after shape/glowEnabled changes.
+const glowHandlesMap = new Map<MetalFxInstance, { handles: ReturnType<typeof injectGlow>; themeRef: { current: 'dark' | 'light' } }>();
+
+// Bridge between the shared animation loop and per-instance glow SVGs.
+// The loop module doesn't import glow directly — it invokes this callback
+// for one queued instance per frame (round-robin), keeping render work
+// proportional to frame budget regardless of instance count.
+setGlowCallback((inst, nowMs) => {
+  const entry = glowHandlesMap.get(inst);
+  if (!entry) return;
+  updateGlow(entry.handles, inst, nowMs, inst.opacityMul, entry.themeRef.current);
+});
+
+/**
+ * Resolves 'auto' theme to 'dark' | 'light' and keeps it in sync with
+ * the OS preference via matchMedia.
+ *
+ * The useState initialiser runs synchronously so the resolved value is
+ * available on the first render (no flash). The useEffect then attaches
+ * the MQL listener and calls update() immediately to handle the case
+ * where the OS preference changed between SSR and hydration.
+ */
 function useResolvedTheme(theme: MetalFxTheme): 'dark' | 'light' {
   const [resolved, setResolved] = useState<'dark' | 'light'>(() => {
     if (theme !== 'auto') return theme;
@@ -36,10 +68,7 @@ function useResolvedTheme(theme: MetalFxTheme): 'dark' | 'light' {
   });
 
   useEffect(() => {
-    if (theme !== 'auto') {
-      setResolved(theme);
-      return;
-    }
+    if (theme !== 'auto') { setResolved(theme); return; }
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const update = () => setResolved(mql.matches ? 'dark' : 'light');
@@ -52,21 +81,11 @@ function useResolvedTheme(theme: MetalFxTheme): 'dark' | 'light' {
 }
 
 /**
- * MetalFx — wrap a single child with an animated WebGL metal effect.
- *
- * The wrapper IS the visible button surface (carries the background, corner
- * radius, and the layered overlays). The wrapped child stays the actual
- * interactive element — it receives clicks, focus, keyboard events — but its
- * own border/outline/box-shadow/background are normalized so they don't
- * fight the metal frame.
- *
- * Layer order (matching `Image loader/index.html`):
- *   z=0  shader canvas (centre-punched so only the outer ring is visible)
- *   z=1  `.metal-fx-inner` solid fill
- *   z=2  `::before` soft inset highlight
- *   z=3  glow SVG
- *   z=4  `::after` 1px hairline
- *   z=5  user content
+ * Wraps any element with an animated metallic ring effect driven by a
+ * single shared WebGL renderer. All visible MetalFx instances on the page
+ * share one offscreen GL canvas; each instance composites a cropped/scaled
+ * copy of it onto its own 2D canvas with a rounded hole punched through the
+ * centre.
  */
 export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx(
   {
@@ -86,67 +105,57 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   },
   forwardedRef
 ) {
+  // DOM refs — rootRef/canvasRef/glowHostRef/contentRef are for direct DOM access.
+  // instanceRef/glowHandlesRef hold engine objects that survive React re-renders.
+  // themeRef lets the glow callback read the current theme without a closure
+  // over a stale value — mutated during render, never triggers a re-render.
+  // initialWrapperRadiusRef caches the CSS border-radius read at mount time so
+  // measure() can fall back to it when no explicit borderRadius prop is given.
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const innerRef = useRef<HTMLDivElement | null>(null);
   const glowHostRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<MetalFxInstance | null>(null);
   const glowHandlesRef = useRef<ReturnType<typeof injectGlow> | null>(null);
-  /** Latest resolved theme — read by the per-frame glow tick so theme
-   *  switches take effect without rebuilding the RAF closure. */
   const themeRef = useRef<'dark' | 'light'>('dark');
-  /** Author-supplied wrapper radius captured ONCE on mount, before any of
-   *  our own writes to `root.style.borderRadius`. Used as the fallback
-   *  when the wrapped child reports `0` (e.g. consumer styles `<MetalFx>`
-   *  directly via `style={{ borderRadius: ... }}` instead of styling the
-   *  child). Without this snapshot the auto-detect path would later read
-   *  back our own write and create a feedback loop. */
   const initialWrapperRadiusRef = useRef<number>(0);
 
   const resolvedTheme = useResolvedTheme(theme);
+  // Write during render (not in an effect) so the glow callback always sees
+  // the up-to-date theme on the very next tick.
   themeRef.current = resolvedTheme;
-  /** Variant -> shape mapping. The Circle variant is rendered as a circle, the
-   *  Button variant as a pill. The actual silhouette comes from the wrapped
-   *  child's measured box, this mapping just feeds the engine + CSS data
-   *  attributes for shape-specific tuning. */
   const shape: 'pill' | 'circle' = variant === 'circle' ? 'circle' : 'pill';
-
   const glowEnabled = !disableGlow;
 
   useImperativeHandle(forwardedRef, () => rootRef.current as HTMLDivElement, []);
 
-  useLayoutEffect(() => {
-    ensureStylesInjected();
-  }, []);
+  const resolveRadius = (w: number, h: number) => {
+    const raw = typeof borderRadius === 'number'
+      ? borderRadius
+      : (() => {
+          const childEl = contentRef.current?.firstElementChild as HTMLElement | null;
+          if (childEl) {
+            const parsed = parseFloat(getComputedStyle(childEl).borderTopLeftRadius);
+            if (Number.isFinite(parsed) && parsed > 0) return parsed;
+          }
+          return initialWrapperRadiusRef.current;
+        })();
+    return Math.min(raw, Math.min(w, h) / 2);
+  };
 
-  // Push current preset/theme to the shared renderer.
-  useEffect(() => {
-    setSharedPreset(preset, resolvedTheme);
-  }, [preset, resolvedTheme]);
+  useEffect(() => { setSharedPreset(preset, resolvedTheme); }, [preset, resolvedTheme]);
+  useEffect(() => { if (paused) pauseShared(); else resumeShared(); }, [paused]);
 
-  // Pause / resume the shared renderer on prop change.
-  useEffect(() => {
-    if (paused) pauseShared();
-    else resumeShared();
-  }, [paused]);
-
-  // Mount: measure the host (reading the wrapped CHILD's border-radius so
-  // a consumer can style their own button/element and have the wrapper
-  // visually follow) and create the per-instance renderer state.
+  // useLayoutEffect (not useEffect) so the instance is created and the canvas
+  // is sized synchronously before the browser paints — avoids a one-frame
+  // flash of the unsized canvas.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: borderRadius changes handled by separate effect
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     const root = rootRef.current;
     const glowHost = glowHostRef.current;
     if (!canvas || !root) return;
-    if (glowEnabled && !glowHost) return;
 
-    // Snapshot any author-supplied wrapper radius BEFORE we ever write to
-    // `root.style.borderRadius`. This preserves the case where a consumer
-    // styles `<MetalFx>` directly via `style={{ borderRadius: 18 }}`
-    // instead of styling the child — without the snapshot, our own write
-    // below would replace the value on the next ResizeObserver tick and
-    // we'd lose the authored radius forever.
     {
       const computed = getComputedStyle(root);
       const parsed = parseFloat(computed.borderTopLeftRadius);
@@ -155,49 +164,9 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
 
     const measure = () => {
       const rect = root.getBoundingClientRect();
-      // Round CSS dimensions to whole pixels so the glow SVG viewBox + path
-      // perimeter stay in lockstep with the canvas border-radius. Sub-pixel
-      // host sizes (e.g. a 36.5 × 36.5 box from a flex parent) push the
-      // perimeter walk through a microscopic top/bottom edge that breaks the
-      // "perfect circle" assumption — the path-builder's `topLen = w − 2r`
-      // becomes 0.5 instead of 0, so the circle variant's wandering anchor +
-      // catch-light snap onto a stadium-with-tiny-flats instead of the visible
-      // circular silhouette. Whole pixels here keeps W=H=2R for the circle
-      // variant on every host, regardless of the parent's flex math. */
       const cssWidth = Math.max(1, Math.round(rect.width));
       const cssHeight = Math.max(1, Math.round(rect.height));
-      // Resolution order:
-      //   1. `borderRadius` prop is a number → explicit override wins.
-      //   2. Wrapped child's computed `border-top-left-radius` → matches
-      //      the README contract that consumers style their own host
-      //      element (e.g. `<button style={{ borderRadius: 12 }}>`).
-      //   3. Author-supplied wrapper radius captured at mount → covers
-      //      the `<MetalFx style={{ borderRadius: 18 }}>` case.
-      //   4. `0`.
-      // We deliberately do NOT read from `root` here; we already wrote
-      // our own resolved value back to `root.style.borderRadius` on a
-      // previous tick, so reading it would create a feedback loop.
-      const rawRadius = (() => {
-        if (typeof borderRadius === 'number') return borderRadius;
-        const childEl = contentRef.current?.firstElementChild as HTMLElement | null;
-        if (childEl) {
-          const childComputed = getComputedStyle(childEl);
-          const parsed = parseFloat(childComputed.borderTopLeftRadius);
-          if (Number.isFinite(parsed) && parsed > 0) return parsed;
-        }
-        return initialWrapperRadiusRef.current;
-      })();
-      // Circle variant intentionally renders as a circle — clamp the corner
-      // radius to at least half the smaller side so the host silhouette
-      // is a true circle even when the consumer passes a smaller radius
-      // than the side count (e.g. `borderRadius={16}` on a 40 × 40 host).
-      // Without this clamp the glow's perimeter walk emits a tiny flat
-      // edge segment and the catch-light visibly skips off the rim.
-      const cornerRadius =
-        shape === 'circle'
-          ? Math.max(rawRadius, Math.min(cssWidth, cssHeight) / 2)
-          : rawRadius;
-      return { cssWidth, cssHeight, cornerRadius };
+      return { cssWidth, cssHeight, cornerRadius: resolveRadius(cssWidth, cssHeight) };
     };
 
     const initial = measure();
@@ -207,18 +176,11 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       cssHeight: initial.cssHeight,
       cornerRadius: initial.cornerRadius,
       kind: shape,
-      onAfterFrame: scheduleReflectionPaint,
     });
-    // Mirror the resolved radius onto the wrapper on first paint so the
-    // wrapper background, ::before / ::after pseudos, .metal-fx-canvas
-    // (border-radius: inherit) and the glow host all paint as a rounded
-    // surface that matches the engine's masked silhouette. Without this,
-    // a child styled with `border-radius: 12` would round only the inner
-    // shader / inner div while the wrapper background paints a hard
-    // rectangle behind it.
     root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
     root.style.borderRadius = `${initial.cornerRadius}px`;
-    if (glowEnabled && glowHost) {
+
+    if (glowHost) {
       glowHandlesRef.current = injectGlow(glowHost, {
         width: initial.cssWidth,
         height: initial.cssHeight,
@@ -230,145 +192,106 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     let resizeRaf = 0;
     const ro = new ResizeObserver(() => {
       if (resizeRaf !== 0) return;
+      // RAF-debounce: coalesce multiple resize events within the same frame and
+      // skip any that fire while a frame is already queued.
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0;
         const next = measure();
         const inst = instanceRef.current;
         if (!inst) return;
-        updateInstance(inst, {
-          cssWidth: next.cssWidth,
-          cssHeight: next.cssHeight,
-          cornerRadius: next.cornerRadius,
-        });
-        // Mirror the resolved corner radius onto the host so the inset-aware
-        // rules in styles.ts (`calc(var(--mfx-radius, ...) - inset)`)
-        // recompute the inner div + ::before / ::after radii after every
-        // size change. Without this, a host that grows past the original
-        // measured size keeps its old `--mfx-radius` and the circle's inner
-        // hairline + the white outer hairline drift away from the visible
-        // silhouette curve.
+        updateInstance(inst, { cssWidth: next.cssWidth, cssHeight: next.cssHeight, cornerRadius: next.cornerRadius });
         root.style.setProperty('--mfx-radius', `${next.cornerRadius}px`);
-        // Always mirror to `border-radius` (not gated on numeric prop) so
-        // the wrapper's painted surface keeps tracking the resolved value
-        // even when it came from the wrapped child or the initial wrapper
-        // snapshot. The wrapper IS the visible card edge; this write is
-        // what makes the rounded silhouette read as a single surface.
         root.style.borderRadius = `${next.cornerRadius}px`;
-        if (glowEnabled && glowHost) {
-          // Wipe + re-inject so the SVG viewBox matches the new dimensions.
+        if (glowHost) {
           glowHost.innerHTML = '';
           glowHandlesRef.current = injectGlow(glowHost, {
-            width: next.cssWidth,
-            height: next.cssHeight,
-            cornerRadius: next.cornerRadius,
-            kind: shape,
+            width: next.cssWidth, height: next.cssHeight, cornerRadius: next.cornerRadius, kind: shape,
           });
+          if (inst && glowHandlesRef.current) {
+            glowHandlesMap.set(inst, { handles: glowHandlesRef.current, themeRef });
+          }
         }
       });
     });
     ro.observe(root);
 
+    // Skip GL compositing for off-screen instances — the loop checks inst.visible
+    // before copyShaderToInstance, so hidden instances cost nothing per frame.
+    // rootMargin: 64px starts rendering slightly before the element scrolls into view.
     let io: IntersectionObserver | null = null;
     if (typeof IntersectionObserver !== 'undefined') {
       io = new IntersectionObserver(
-        (entries) => {
-          const inst = instanceRef.current;
-          if (!inst) return;
-          for (const entry of entries) {
-            setInstanceVisible(inst, entry.isIntersecting);
-          }
-        },
+        (entries) => { const inst = instanceRef.current; if (!inst) return; for (const e of entries) setInstanceVisible(inst, e.isIntersecting); },
         { rootMargin: '64px' }
       );
       io.observe(root);
     }
 
-    /* Per-frame glow update — runs on its own RAF so we don't block the
-     * shared renderer's loop. The shared loop populates the GL framebuffer
-     * sample buffer (`renderer.glowSampleBuf`) before this fires, so the
-     * brightness scan inside `updateGlow` reads fresh shader luminance.
-     * The shared loop already calls `scheduleReflectionPaint` via
-     * `onAfterFrame`; the glow has its own cadence that's allowed to
-     * stutter under load without ruining the look. */
-    let glowRaf = 0;
-    const tickGlow = (now: number) => {
-      const handles = glowHandlesRef.current;
-      const inst = instanceRef.current;
-      if (handles && inst && inst.visible) {
-        updateGlow(handles, inst, now, inst.opacityMul, themeRef.current);
-      }
-      glowRaf = requestAnimationFrame(tickGlow);
-    };
-    glowRaf = requestAnimationFrame(tickGlow);
+    if (instanceRef.current && glowHandlesRef.current) {
+      glowHandlesMap.set(instanceRef.current, { handles: glowHandlesRef.current, themeRef });
+      registerGlowInstance(instanceRef.current);
+    }
 
     return () => {
       ro.disconnect();
       io?.disconnect();
       if (resizeRaf !== 0) cancelAnimationFrame(resizeRaf);
-      if (glowRaf !== 0) cancelAnimationFrame(glowRaf);
       const inst = instanceRef.current;
-      if (inst) destroyInstance(inst);
+      if (inst) {
+        glowHandlesMap.delete(inst);
+        unregisterGlowInstance(inst);
+        destroyInstance(inst);
+      }
       instanceRef.current = null;
       glowHandlesRef.current = null;
       if (glowHost) glowHost.innerHTML = '';
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shape, glowEnabled]);
+  }, [shape]);
 
-  // Apply strength to instance opacity multiplier — affects canvas alpha each
-  // frame (handled in renderer) and glow alpha (handled in updateGlow).
-  //
-  // The Button variant gets a 0.92 ceiling: per design, "what used to render
-  // at strength=0.92" is now the visual 100 % for buttons (i.e. the new full-
-  // strength look reads slightly softer than the old raw-1.0 ceiling, which
-  // tended to flash too hot on the canonical 134 × 40 pill against a dark
-  // surface). The Circle variant is unaffected and continues to map the user's
-  // strength 1:1 onto the renderer + glow opacity, so the 36 × 36 circle
-  // still hits its full canonical intensity at strength = 1. Mapping happens
-  // here at the consumer-facing API boundary, so the engine keeps a single
-  // [0..1] semantic and the caller never has to think about the variant.
+  // Cap button-variant opacity at 0.92 — full opacity makes the ring look
+  // oversaturated on the pill shape at default strength.
   useEffect(() => {
     const inst = instanceRef.current;
     if (!inst) return;
     const cap = variant === 'button' ? 0.92 : 1;
-    updateInstance(inst, {
-      opacityMul: Math.max(0, Math.min(1, strength * cap)),
-    });
+    updateInstance(inst, { opacityMul: Math.max(0, Math.min(1, strength * cap)) });
   }, [strength, variant]);
 
-  // Reflection target registration (dark mode only).
+  // onAfterFrame is wired here rather than at createInstance time so instances
+  // without reflectionTargets never schedule the reflection RAF.
+  // Reflections are dark-mode only — no DOM work in light mode.
   useEffect(() => {
     const inst = instanceRef.current;
     const root = rootRef.current;
     if (!inst || !root || !reflectionTargets || resolvedTheme !== 'dark') return;
+    inst.onAfterFrame = scheduleReflectionPaint;
     const live = reflectionTargets.flatMap((r) => (r.current ? [r.current] : []));
     for (const el of live) addReflectionTarget(el, inst, root);
     return () => {
+      inst.onAfterFrame = undefined;
       for (const el of live) removeReflectionTarget(el);
     };
   }, [reflectionTargets, resolvedTheme]);
 
-  // Push corner radius to a CSS var so the inset-aware rules in styles.ts can
-  // compute the inner div's radius (= outer − inset). We always write the
-  // ENGINE's resolved radius (which the circle variant clamps to half the
-  // smaller side) so the inner div stays a true circle even when the user
-  // passes `borderRadius` smaller than half the host. Visible host shape
-  // also uses the resolved radius for the same reason — including when
-  // the resolved value came from auto-detection on the wrapped child,
-  // not just from the explicit numeric prop.
+  // Separate from the main lifecycle effect so borderRadius / variant / theme
+  // changes re-sync the radius without destroying and recreating the instance.
+  // biome-ignore covers shape, which is derived from variant and identical to
+  // inst.kind — adding it would be correct but redundant.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger deps for radius re-sync
   useEffect(() => {
     const root = rootRef.current;
     const inst = instanceRef.current;
     if (!root || !inst) return;
-    root.style.setProperty('--mfx-radius', `${inst.cornerRadius}px`);
-    root.style.borderRadius = `${inst.cornerRadius}px`;
-  }, [borderRadius, resolvedTheme, variant]);
+    const cornerRadius = resolveRadius(inst.cssWidth, inst.cssHeight);
+    updateInstance(inst, { cornerRadius });
+    root.style.setProperty('--mfx-radius', `${cornerRadius}px`);
+    root.style.borderRadius = `${cornerRadius}px`;
+  }, [borderRadius, resolvedTheme, variant, shape]);
 
+  // --mfx-strength is consumed by downstream CSS (e.g. content opacity rules).
+  // Spread style last so consumer inline styles can still override other props.
   const wrapperStyle = useMemo<CSSProperties>(
-    () => ({
-      ...style,
-      ['--mfx-strength' as string]: String(Math.min(1, Math.max(0, strength))),
-    }),
+    () => ({ ...style, ['--mfx-strength' as string]: String(Math.min(1, Math.max(0, strength))) }),
     [style, strength]
   );
 
@@ -376,7 +299,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     <div
       {...rest}
       ref={rootRef}
-      className={['metal-fx-root', className].filter(Boolean).join(' ')}
+      className={className ? `metal-fx-root ${className}` : 'metal-fx-root'}
       data-variant={variant}
       data-shape={shape}
       data-theme={resolvedTheme}
@@ -384,24 +307,10 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       data-normalize={normalizeHostStyles ? 'true' : 'false'}
       style={wrapperStyle}
     >
-      <canvas ref={canvasRef} className="metal-fx-canvas" aria-hidden="true" />
-      <div ref={innerRef} className="metal-fx-inner" aria-hidden="true" />
-      {glowEnabled && (
-        <div
-          ref={glowHostRef}
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 3,
-            borderRadius: 'inherit',
-          }}
-        />
-      )}
-      <div ref={contentRef} className="metal-fx-content">
-        {children}
-      </div>
+      <canvas ref={canvasRef} className="metal-fx-canvas" style={CANVAS_STYLE} />
+      <div className="metal-fx-inner" aria-hidden="true" style={INNER_STYLE} />
+      <div ref={glowHostRef} aria-hidden="true" style={{ ...GLOW_HOST_STYLE, display: glowEnabled ? undefined : 'none' }} />
+      <div ref={contentRef} className="metal-fx-content">{children}</div>
     </div>
   );
 });

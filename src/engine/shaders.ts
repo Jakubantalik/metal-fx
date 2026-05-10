@@ -159,23 +159,21 @@ export const FRAG_SHADER_SRC = /* glsl */ `
     float dist = u_distortion;
     float cpx = u_complexity;
 
-    /* Optional 9-tap blur (matches the canonical engine's \`if u_blur < 0.01\`
-     * branch). The chromatic/silver/gold presets ship with blur=1, so the
-     * full blur path is what users normally see. */
+    /* 5-tap cross blur (center + cardinal offsets). The chromatic/silver/gold
+     * presets all ship with blur=1 so this path is always active. 5 taps
+     * instead of the canonical engine's 9 saves ~44% fragment work; the
+     * perceptual difference is nil because the output is already soft from
+     * the plasma's low spatial frequency and CSS blur on reflections. */
     vec3 col;
     if (u_blur < 0.01) {
       col = computeEffect(uv, aspect, t, dist, cpx);
     } else {
       float r = u_blur * 0.02;
-      col  = computeEffect(uv,                              aspect, t, dist, cpx) * 0.25;
-      col += computeEffect(uv + vec2( r,  0.0),             aspect, t, dist, cpx) * 0.125;
-      col += computeEffect(uv + vec2(-r,  0.0),             aspect, t, dist, cpx) * 0.125;
-      col += computeEffect(uv + vec2( 0.0,  r),             aspect, t, dist, cpx) * 0.125;
-      col += computeEffect(uv + vec2( 0.0, -r),             aspect, t, dist, cpx) * 0.125;
-      col += computeEffect(uv + vec2( r,  r) * 0.707,       aspect, t, dist, cpx) * 0.0625;
-      col += computeEffect(uv + vec2(-r,  r) * 0.707,       aspect, t, dist, cpx) * 0.0625;
-      col += computeEffect(uv + vec2( r, -r) * 0.707,       aspect, t, dist, cpx) * 0.0625;
-      col += computeEffect(uv + vec2(-r, -r) * 0.707,       aspect, t, dist, cpx) * 0.0625;
+      col  = computeEffect(uv,                  aspect, t, dist, cpx) * 0.4;
+      col += computeEffect(uv + vec2( r, 0.0),  aspect, t, dist, cpx) * 0.15;
+      col += computeEffect(uv + vec2(-r, 0.0),  aspect, t, dist, cpx) * 0.15;
+      col += computeEffect(uv + vec2(0.0,  r),  aspect, t, dist, cpx) * 0.15;
+      col += computeEffect(uv + vec2(0.0, -r),  aspect, t, dist, cpx) * 0.15;
     }
 
     /* Gamma punch — adds the contrast pop that defines the chromatic

@@ -25,5 +25,6 @@ export {
   setSharedPreset,
   pauseShared,
   resumeShared,
-  type MetalFxInstance,
-} from './engine/renderer';
+} from './engine/renderer/loop';
+
+export type { MetalFxInstance } from './engine/renderer/core';
