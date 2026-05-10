@@ -1,10 +1,10 @@
 // ─── Frame rates ──────────────────────────────────────────────────────────
 
 // Main render loop: shader + canvas compositing. 66ms ≈ 15fps.
-export const FRAME_INTERVAL_MS = 50;
+export const FRAME_INTERVAL_MS = 66;
 
 // Reflection repaint throttle. Matches main loop; CSS blur hides stepping.
-export const REFLECTION_INTERVAL_MS = 50;
+export const REFLECTION_INTERVAL_MS = 66;
 
 // ─── Glow ─────────────────────────────────────────────────────────────────
 
