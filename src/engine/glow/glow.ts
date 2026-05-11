@@ -61,6 +61,10 @@ export interface GlowHandles {
   extraInner: SVGGElement;
   fadeCircle: SVGCircleElement;
   width: number; height: number; cornerRadius: number; kind: 'pill' | 'circle';
+  /** Master scale used at injection time so per-frame position math
+   *  (INSET / EXTRA_OUTWARD) stays consistent with the strokes already
+   *  baked into the SVG markup. */
+  scale: number;
   perim: PerimSample[];
   currentIdx: number; appearedAt: number; glowOpacity: number;
   relocTween: Tween | null; relocNextIdx: number;
@@ -118,6 +122,7 @@ export function injectGlow(container: HTMLElement, opts: GlowOptions): GlowHandl
   return {
     svg, haloGroup, haloInner, extraGroup, extraInner, fadeCircle,
     width: opts.width, height: opts.height, cornerRadius: opts.cornerRadius, kind: opts.kind,
+    scale: opts.scale ?? 1,
     perim: buildPerimTable(opts),
     currentIdx: 0, appearedAt: 0, glowOpacity: 0,
     relocTween: null, relocNextIdx: -1,
@@ -182,14 +187,18 @@ export function updateGlow(h: GlowHandles, inst: MetalFxInstance, nowMs: number,
 
   const blobArc = perim[h.currentIdx].arc + h.wanderS;
 
-  sampleAtArc(blobArc, W, H, R, INSET, 0, h.kind, _pt);
+  // INSET / EXTRA_OUTWARD are absolute SVG-unit offsets; multiply by the
+  // master scale so the catch-light sits at the right perpendicular distance
+  // when the host element is rendered at non-1× layout (e.g. CSS zoom: 2).
+  const insetS = INSET * h.scale;
+  sampleAtArc(blobArc, W, H, R, insetS, 0, h.kind, _pt);
   const blobX = _pt.x, blobY = _pt.y;
-  const tangent = tangentAngleAtArc(blobArc, W, H, R, INSET, h.kind);
+  const tangent = tangentAngleAtArc(blobArc, W, H, R, insetS, h.kind);
   const tx = `translate(${blobX.toFixed(3)}px,${blobY.toFixed(3)}px) rotate(${tangent.toFixed(4)}rad)`;
   h.haloInner.style.transform = tx;
 
-  const extraOut = EXTRA_OUTWARD * ratio;
-  sampleAtArc(blobArc, W, H, R, INSET, extraOut, h.kind, _pt);
+  const extraOut = EXTRA_OUTWARD * ratio * h.scale;
+  sampleAtArc(blobArc, W, H, R, insetS, extraOut, h.kind, _pt);
   h.extraInner.style.transform = `translate(${_pt.x.toFixed(3)}px,${_pt.y.toFixed(3)}px) rotate(${tangent.toFixed(4)}rad)`;
   h.fadeCircle.style.transform = `translate(${_pt.x.toFixed(3)}px,${_pt.y.toFixed(3)}px)`;
 

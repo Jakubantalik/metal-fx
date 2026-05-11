@@ -12,9 +12,7 @@ import type { MetalFxInstance } from './engine/renderer/core';
 import {
   createInstance,
   destroyInstance,
-  pauseShared,
   registerGlowInstance,
-  resumeShared,
   setGlowCallback,
   setInstanceVisible,
   setSharedPreset,
@@ -99,6 +97,9 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     normalizeHostStyles = true,
     reflectionTargets,
     disableGlow = false,
+    shaderScale,
+    ringCssPx,
+    scale = 1,
     className,
     style,
     ...rest
@@ -130,6 +131,14 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   useImperativeHandle(forwardedRef, () => rootRef.current as HTMLDivElement, []);
 
   const resolveRadius = (w: number, h: number) => {
+    // variant='circle' is the user's explicit promise that the wrapped
+    // element should render as a circle. Always pick min(w,h)/2 so the
+    // engine produces a true circle even when the child's CSS border-radius
+    // is read in a different coordinate space than the bounding rect (the
+    // exact failure mode under CSS `zoom: 2`, where getComputedStyle
+    // returns source pixels but getBoundingClientRect returns zoomed ones).
+    if (shape === 'circle') return Math.min(w, h) / 2;
+
     const raw = typeof borderRadius === 'number'
       ? borderRadius
       : (() => {
@@ -144,7 +153,24 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   };
 
   useEffect(() => { setSharedPreset(preset, resolvedTheme); }, [preset, resolvedTheme]);
-  useEffect(() => { if (paused) pauseShared(); else resumeShared(); }, [paused]);
+  // `paused` is per-instance: it freezes only this instance's 2D canvas while
+  // the shared GL loop keeps running for any other unpaused instance.
+  useEffect(() => {
+    const inst = instanceRef.current;
+    if (!inst) return;
+    updateInstance(inst, { paused });
+  }, [paused]);
+
+  // Re-sync optional shader/ring/scale overrides if they change at runtime.
+  useEffect(() => {
+    const inst = instanceRef.current;
+    if (!inst) return;
+    const patch: Partial<Parameters<typeof updateInstance>[1]> = {};
+    if (shaderScale !== undefined) patch.shaderScale = shaderScale;
+    if (ringCssPx !== undefined) patch.ringCssPx = ringCssPx;
+    if (scale !== undefined) patch.scale = scale;
+    if (Object.keys(patch).length > 0) updateInstance(inst, patch);
+  }, [shaderScale, ringCssPx, scale]);
 
   // useLayoutEffect (not useEffect) so the instance is created and the canvas
   // is sized synchronously before the browser paints — avoids a one-frame
@@ -176,6 +202,10 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       cssHeight: initial.cssHeight,
       cornerRadius: initial.cornerRadius,
       kind: shape,
+      paused,
+      shaderScale,
+      ringCssPx,
+      scale,
     });
     root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
     root.style.borderRadius = `${initial.cornerRadius}px`;
@@ -186,6 +216,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         height: initial.cssHeight,
         cornerRadius: initial.cornerRadius,
         kind: shape,
+        scale,
       });
     }
 
@@ -205,7 +236,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         if (glowHost) {
           glowHost.innerHTML = '';
           glowHandlesRef.current = injectGlow(glowHost, {
-            width: next.cssWidth, height: next.cssHeight, cornerRadius: next.cornerRadius, kind: shape,
+            width: next.cssWidth, height: next.cssHeight, cornerRadius: next.cornerRadius, kind: shape, scale,
           });
           if (inst && glowHandlesRef.current) {
             glowHandlesMap.set(inst, { handles: glowHandlesRef.current, themeRef });
@@ -248,13 +279,13 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     };
   }, [shape]);
 
-  // Cap button-variant opacity at 0.92 — full opacity makes the ring look
-  // oversaturated on the pill shape at default strength.
+  // strength=1 maps directly to a full-opacity composite (opacityMul=1) for
+  // every variant. Per-preset toning lives in `shaderOpacity` inside each
+  // PresetMode, not here, so buttons and circles share the same headroom.
   useEffect(() => {
     const inst = instanceRef.current;
     if (!inst) return;
-    const cap = variant === 'button' ? 0.92 : 1;
-    updateInstance(inst, { opacityMul: Math.max(0, Math.min(1, strength * cap)) });
+    updateInstance(inst, { opacityMul: Math.max(0, Math.min(1, strength)) });
   }, [strength, variant]);
 
   // onAfterFrame is wired here rather than at createInstance time so instances

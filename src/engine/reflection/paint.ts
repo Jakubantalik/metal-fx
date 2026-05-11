@@ -175,11 +175,17 @@ export function paintReflections(): void {
       intensity * INTENSITY_MULT * GLOBAL_ATTENUATION
     );
 
-    const hairlineCssPx = Math.max(STROKE_CSS_PX, t.hairlineWidth);
+    // Effective scale of the host element. Anything drawn on the reflection
+    // canvas (strokes, border-highlight) is in DEVICE pixels, so it doesn't
+    // automatically grow when the host is rendered at non-1× layout (CSS
+    // zoom: 2, etc.). Multiply absolute-pixel constants by the anchor's
+    // scale so the reflection scales together with the metal effect itself.
+    const sScale = t.anchor.scale ?? 1;
+    const hairlineCssPx = Math.max(STROKE_CSS_PX * sScale, t.hairlineWidth);
     const strokeBandPx = Math.max(1, Math.round(hairlineCssPx * dpr));
     const borderHighlightPx = Math.max(
       1,
-      Math.round(Math.max(BORDER_HILITE_PX, t.hairlineWidth) * dpr)
+      Math.round(Math.max(BORDER_HILITE_PX * sScale, t.hairlineWidth) * dpr)
     );
 
     const overscanCssPx = t.hairlineOuterCssPx;

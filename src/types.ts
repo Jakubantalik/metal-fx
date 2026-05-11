@@ -109,6 +109,35 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
   disableGlow?: boolean;
 
   /**
+   * Override the shader sampling scale. Larger values zoom into the shared
+   * shader (visibly bigger pattern features); smaller values zoom out.
+   * Defaults to the variant's baseline (1.6 for `'button'`, 1.3 for
+   * `'circle'`) multiplied by `scale`.
+   */
+  shaderScale?: number;
+
+  /**
+   * Override the ring thickness in CSS pixels. Defaults to the variant's
+   * baseline (1 for `'button'`, 2 for `'circle'`) multiplied by `scale`.
+   */
+  ringCssPx?: number;
+
+  /**
+   * Master scale multiplier for every absolute-pixel constant the engine
+   * uses internally. Set this when you render the wrapped element at a
+   * non-1× size (e.g. inside a CSS `zoom: 2` container, or when you've
+   * doubled all your Tailwind sizes by hand). It scales:
+   *   - shader sampling (so pattern features grow proportionally)
+   *   - ring thickness on the canvas
+   *   - glow SVG stroke widths, blur radii, fade-circle radius, and the
+   *     small inset/outward offsets that position the catch-light
+   *   - reflection canvas stroke band, border-highlight thickness, and the
+   *     reference draw width baseline
+   * @default 1
+   */
+  scale?: number;
+
+  /**
    * Forwarded class name for the wrapper element.
    */
   className?: string;

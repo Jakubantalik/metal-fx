@@ -75,10 +75,10 @@ const CHROMATIC: Preset = {
       blur: 1,
       vignette: 0.26,
       vigOpacity: 0.6,
-      shaderOpacity: 0.8,
+      shaderOpacity: 1,
     },
     light: {
-      colors: ['#fff2f2', '#fffad2', '#b0e9bc', '#9ea0a7', '#e1ecff', '#ffffff', '#007cff'],
+      colors: ['#ffffff', '#ffffff', '#ffffff', '#ffb3b3', '#adadad', '#f5ff70', '#007cff'],
       alphas: [1, 1, 1, 1, 1, 1, 1],
       direction: 80,
       speed: 1.2,

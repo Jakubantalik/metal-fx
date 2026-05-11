@@ -17,7 +17,17 @@ const EXTRA_FADE_R = 13.0 * EXTRA_SCALE;
 
 export { PERIM_SAMPLES };
 
-export interface GlowOptions { width: number; height: number; cornerRadius: number; kind: 'pill' | 'circle' }
+export interface GlowOptions {
+  width: number;
+  height: number;
+  cornerRadius: number;
+  kind: 'pill' | 'circle';
+  /** Master multiplier for absolute SVG units (stroke widths, blur,
+   *  fade-circle radius). 1 is the canonical 1× rendering. Set to 2 when
+   *  the host element is rendered at a 2× layout (e.g. CSS zoom: 2) so
+   *  the glow grows proportionally. */
+  scale?: number;
+}
 export interface Pt { x: number; y: number }
 export interface PerimSample extends Pt { arc: number }
 
@@ -106,10 +116,11 @@ export function smoothstep(a: number, b: number, x: number): number {
 
 export function buildPerimTable(opts: GlowOptions): PerimSample[] {
   const perim = shapePerim(opts.width, opts.height, opts.cornerRadius, opts.kind);
+  const insetS = INSET * (opts.scale ?? 1);
   const table: PerimSample[] = [];
   for (let i = 0; i < PERIM_SAMPLES; i++) {
     const arc = (i / PERIM_SAMPLES) * perim;
-    const pt = sampleAtArc(arc, opts.width, opts.height, opts.cornerRadius, INSET, 0, opts.kind);
+    const pt = sampleAtArc(arc, opts.width, opts.height, opts.cornerRadius, insetS, 0, opts.kind);
     table.push({ x: pt.x, y: pt.y, arc });
   }
   return table;
@@ -117,32 +128,42 @@ export function buildPerimTable(opts: GlowOptions): PerimSample[] {
 
 export function buildSvgMarkup(opts: GlowOptions, p: string): string {
   const { width: W, height: H, cornerRadius: R } = opts;
+  const s = opts.scale ?? 1;
   const ringInset = opts.kind === 'circle' ? 2 : 1;
   const innerR = Math.max(0, R - ringInset);
-  const fr = 'x="-200" y="-200" width="540" height="440" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"';
+  // Filter region grows with scale so blurred strokes don't get clipped at
+  // bigger sizes. The 200/540/440 baseline matches the canonical 1× pill.
+  const FR_OFF = 200 * s;
+  const FR_W = 540 * s;
+  const FR_H = 440 * s;
+  const fr = `x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"`;
+  // Stroke widths and blur stdDeviations are absolute SVG units; multiply
+  // by `s` so they remain proportional when viewBox grows with the host.
+  const sw = (n: number) => (n * s).toFixed(3);
+  const sd = (n: number) => (n * s).toFixed(3);
   return [
     '<defs>',
-    `<filter id="${p}_bXl" ${fr}><feGaussianBlur stdDeviation="8.4"/></filter>`,
-    `<filter id="${p}_bLg" ${fr}><feGaussianBlur stdDeviation="4.8"/></filter>`,
-    `<filter id="${p}_bMd" ${fr}><feGaussianBlur stdDeviation="2.1"/></filter>`,
-    `<filter id="${p}_bSm" ${fr}><feGaussianBlur stdDeviation="0.9"/></filter>`,
-    `<filter id="${p}_ebO" ${fr}><feGaussianBlur stdDeviation="${EXTRA_BLUR_OUTER.toFixed(3)}"/></filter>`,
-    `<filter id="${p}_ebC" ${fr}><feGaussianBlur stdDeviation="${EXTRA_BLUR_CORE.toFixed(3)}"/></filter>`,
+    `<filter id="${p}_bXl" ${fr}><feGaussianBlur stdDeviation="${sd(8.4)}"/></filter>`,
+    `<filter id="${p}_bLg" ${fr}><feGaussianBlur stdDeviation="${sd(4.8)}"/></filter>`,
+    `<filter id="${p}_bMd" ${fr}><feGaussianBlur stdDeviation="${sd(2.1)}"/></filter>`,
+    `<filter id="${p}_bSm" ${fr}><feGaussianBlur stdDeviation="${sd(0.9)}"/></filter>`,
+    `<filter id="${p}_ebO" ${fr}><feGaussianBlur stdDeviation="${sd(EXTRA_BLUR_OUTER)}"/></filter>`,
+    `<filter id="${p}_ebC" ${fr}><feGaussianBlur stdDeviation="${sd(EXTRA_BLUR_CORE)}"/></filter>`,
     `<radialGradient id="${p}_fg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="white"/><stop offset="0.30" stop-color="white"/><stop offset="0.65" stop-color="#404040"/><stop offset="1" stop-color="black"/></radialGradient>`,
-    `<mask id="${p}_fm" maskUnits="userSpaceOnUse" x="-200" y="-200" width="540" height="440"><rect x="-200" y="-200" width="540" height="440" fill="black"/><circle id="${p}_fc" cx="0" cy="0" r="${EXTRA_FADE_R.toFixed(3)}" fill="url(#${p}_fg)"/></mask>`,
-    `<mask id="${p}_rm" maskUnits="userSpaceOnUse" x="-200" y="-200" width="540" height="440"><rect x="-200" y="-200" width="540" height="440" fill="#808080"/><rect x="0" y="0" width="${W}" height="${H}" rx="${R}" ry="${R}" fill="white"/><rect x="${ringInset}" y="${ringInset}" width="${W - ringInset * 2}" height="${H - ringInset * 2}" rx="${innerR}" ry="${innerR}" fill="black"/></mask>`,
+    `<mask id="${p}_fm" maskUnits="userSpaceOnUse" x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}"><rect x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}" fill="black"/><circle id="${p}_fc" cx="0" cy="0" r="${(EXTRA_FADE_R * s).toFixed(3)}" fill="url(#${p}_fg)"/></mask>`,
+    `<mask id="${p}_rm" maskUnits="userSpaceOnUse" x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}"><rect x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}" fill="#808080"/><rect x="0" y="0" width="${W}" height="${H}" rx="${R}" ry="${R}" fill="white"/><rect x="${ringInset}" y="${ringInset}" width="${W - ringInset * 2}" height="${H - ringInset * 2}" rx="${innerR}" ry="${innerR}" fill="black"/></mask>`,
     '</defs>',
     `<g id="${p}_h" mask="url(#${p}_rm)" opacity="0">`,
     `<g id="${p}_hI" stroke="white">`,
-    `<path id="${p}_pXl" stroke-width="26.4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.385" filter="url(#${p}_bXl)"/>`,
-    `<path id="${p}_pLg" stroke-width="15.6" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.595" filter="url(#${p}_bLg)"/>`,
-    `<path id="${p}_pMd" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.70" filter="url(#${p}_bMd)"/>`,
-    `<path id="${p}_pSm" stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.70" filter="url(#${p}_bSm)"/>`,
+    `<path id="${p}_pXl" stroke-width="${sw(26.4)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.385" filter="url(#${p}_bXl)"/>`,
+    `<path id="${p}_pLg" stroke-width="${sw(15.6)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.595" filter="url(#${p}_bLg)"/>`,
+    `<path id="${p}_pMd" stroke-width="${sw(7.2)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.70" filter="url(#${p}_bMd)"/>`,
+    `<path id="${p}_pSm" stroke-width="${sw(3.0)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.70" filter="url(#${p}_bSm)"/>`,
     '</g></g>',
     `<g id="${p}_e" mask="url(#${p}_rm)" opacity="0"><g mask="url(#${p}_fm)">`,
     `<g id="${p}_eI" stroke="white">`,
-    `<path id="${p}_eO" stroke-width="${EXTRA_STROKE_OUTER.toFixed(3)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85" filter="url(#${p}_ebO)"/>`,
-    `<path id="${p}_eC" stroke-width="${EXTRA_STROKE_CORE.toFixed(3)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="1.0" filter="url(#${p}_ebC)"/>`,
+    `<path id="${p}_eO" stroke-width="${sw(EXTRA_STROKE_OUTER)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85" filter="url(#${p}_ebO)"/>`,
+    `<path id="${p}_eC" stroke-width="${sw(EXTRA_STROKE_CORE)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="1.0" filter="url(#${p}_ebC)"/>`,
     '</g></g></g>',
   ].join('');
 }

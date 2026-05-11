@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CopyButton } from './components/CopyButton';
 import { Examples } from './components/Examples';
 import { Footer } from './components/Footer';
@@ -8,12 +8,18 @@ import { useTheme } from './hooks/useTheme';
 
 export function App() {
   const [theme, toggleTheme] = useTheme();
+  // Strength lives on App so the Playground slider drives both the playground
+  // preview AND the hero examples above. Stored as 0..100 to match the slider
+  // range; consumers convert to 0..1 via `strength / 100`. Default 90% leaves
+  // a bit of headroom so the metal effect feels lively without saturating the
+  // ring on first paint.
+  const [strength, setStrength] = useState(90);
 
   return (
     <main className="flex flex-col items-center max-w-[883px] mx-auto w-full px-6 pb-16 max-sm:px-4 max-sm:pb-12">
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <Examples theme={theme} />
+      <Examples theme={theme} strength={strength / 100} />
 
       <section className="w-full mb-6" aria-label="Installation">
         <h2 className="text-base font-normal leading-[34px] text-(--section-title-color) mb-1">Installation</h2>
@@ -31,7 +37,7 @@ export function App() {
         </div>
       </section>
 
-      <Playground theme={theme} />
+      <Playground theme={theme} strength={strength} onStrengthChange={setStrength} />
 
       <Footer />
     </main>

@@ -3,11 +3,27 @@ import { MetalFx } from '../../src';
 import type { Theme } from '../hooks/useTheme';
 import { ArrowUpIcon, ChevronDownIcon, DotsIcon, PlusIcon, SearchIcon18 } from './icons';
 
-const demoPillClass = 'w-[140px] h-10 rounded-[20px] border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) text-sm font-medium font-inherit leading-[17.938px] tracking-normal whitespace-nowrap cursor-pointer flex items-center justify-center p-0';
-const demoCircleClass = 'size-9 rounded-[50%] border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) cursor-pointer flex items-center justify-center p-0';
+const pillBaseClass = 'h-10 rounded-[20px] border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) cursor-pointer flex items-center justify-center p-0';
+const demoPillClass = `${pillBaseClass} w-[140px] text-sm font-medium font-inherit leading-[17.938px] tracking-normal whitespace-nowrap`;
+const demoCircleClass = `${pillBaseClass} w-10`;
 const chipClass = 'inline-flex items-center gap-1 h-9 pl-3.5 pr-2.5 rounded-full bg-(--chip-bg) shadow-(--chip-shadow) text-(--chip-color) text-xs leading-[14px] font-inherit cursor-default [&_svg]:size-4 [&_svg]:text-(--chip-icon) [&_svg]:rotate-90';
 
-export function Examples({ theme }: { theme: Theme }) {
+export function Examples({
+  theme,
+  scaleFactor = 1,
+  strength = 1,
+}: {
+  theme: Theme;
+  /** Forwarded to <MetalFx scale={scaleFactor}/> so that, when these examples
+   *  are rendered inside a CSS-zoomed container (Hero2x), the entire metal
+   *  effect — shader pattern, ring thickness, glow halo, and reflections —
+   *  grows proportionally instead of staying at the 1× pixel size. */
+  scaleFactor?: number;
+  /** Forwarded to <MetalFx strength={...}/> on every wrapped element so the
+   *  Playground's strength slider can drive these hero buttons too. 0..1,
+   *  defaults to 1 for the standalone 2x hero where there's no slider. */
+  strength?: number;
+}) {
   const searchRef = useRef<HTMLLabelElement>(null);
   const dotsRef = useRef<HTMLButtonElement>(null);
   const autoChipRef = useRef<HTMLDivElement>(null);
@@ -31,7 +47,17 @@ export function Examples({ theme }: { theme: Theme }) {
             <div className="flex-1" />
             <div className={chipClass}><span>Agent</span><ChevronDownIcon /></div>
             <div className={chipClass} ref={autoChipRef}><span>Auto</span><ChevronDownIcon /></div>
-            <MetalFx preset="gold" variant="circle" theme={theme} reflectionTargets={[autoChipRef]}>
+            <MetalFx
+              preset="gold"
+              variant="circle"
+              theme={theme}
+              reflectionTargets={[autoChipRef]}
+              scale={scaleFactor}
+              // Per-example baseline multiplier so the slider still drives
+              // the circle, but its rim peaks at 90% rather than full
+              // saturation. Pair: chromatic pill below uses 0.7.
+              strength={strength * 0.9}
+            >
               <button type="button" className={demoCircleClass}>
                 <ArrowUpIcon />
               </button>
@@ -55,7 +81,16 @@ export function Examples({ theme }: { theme: Theme }) {
             />
           </label>
 
-          <MetalFx preset="chromatic" theme={theme} reflectionTargets={[searchRef, dotsRef]}>
+          <MetalFx
+            preset="chromatic"
+            theme={theme}
+            reflectionTargets={[searchRef, dotsRef]}
+            scale={scaleFactor}
+            // The chromatic pill reads more elegant when its rim is toned
+            // down a bit relative to the gold circle above. Scale the global
+            // strength by 0.7 so the slider still drives it (max ≈ 70%).
+            strength={strength * 0.7}
+          >
             <button type="button" className={demoPillClass}>Upgrade to Pro</button>
           </MetalFx>
 

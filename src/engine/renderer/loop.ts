@@ -44,6 +44,8 @@ interface CreateInstanceOptions {
   shaderScale?: number;
   ringCssPx?: number;
   opacityMul?: number;
+  paused?: boolean;
+  scale?: number;
   onAfterFrame?: () => void;
 }
 
@@ -52,16 +54,20 @@ export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
   const ctx = opts.hostCanvas.getContext('2d', { alpha: true });
   if (!ctx) throw new Error('metal-fx: canvas 2D context unavailable');
 
+  const scale = opts.scale ?? 1;
   const inst: MetalFxInstance = {
     canvas: opts.hostCanvas, ctx,
     cssWidth: opts.cssWidth, cssHeight: opts.cssHeight,
     cornerRadius: opts.cornerRadius,
     kind: opts.kind,
-    ringCssPx: opts.ringCssPx ?? (opts.kind === 'circle' ? 2 : 1),
-    shaderScale: opts.shaderScale ?? (opts.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE),
+    ringCssPx: opts.ringCssPx ?? (opts.kind === 'circle' ? 2 : 1) * scale,
+    shaderScale: opts.shaderScale ?? (opts.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE) * scale,
     opacityMul: opts.opacityMul ?? 1,
     visible: true,
+    paused: opts.paused ?? false,
+    everCopied: false,
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+    scale,
     onAfterFrame: opts.onAfterFrame,
   };
   resizeInstanceCanvas(inst);
@@ -91,20 +97,29 @@ export function unregisterGlowInstance(inst: MetalFxInstance): void {
 
 export function updateInstance(
   inst: MetalFxInstance,
-  patch: Partial<Pick<MetalFxInstance, 'cssWidth' | 'cssHeight' | 'cornerRadius' | 'kind' | 'shaderScale' | 'ringCssPx' | 'opacityMul'>>
+  patch: Partial<Pick<MetalFxInstance, 'cssWidth' | 'cssHeight' | 'cornerRadius' | 'kind' | 'shaderScale' | 'ringCssPx' | 'opacityMul' | 'paused' | 'scale'>>
 ): void {
   let dirty = false;
   if (patch.cssWidth !== undefined && patch.cssWidth !== inst.cssWidth) { inst.cssWidth = patch.cssWidth; dirty = true; }
   if (patch.cssHeight !== undefined && patch.cssHeight !== inst.cssHeight) { inst.cssHeight = patch.cssHeight; dirty = true; }
   if (patch.cornerRadius !== undefined) inst.cornerRadius = patch.cornerRadius;
+  if (patch.scale !== undefined) inst.scale = patch.scale;
   if (patch.kind !== undefined && patch.kind !== inst.kind) {
     inst.kind = patch.kind;
-    if (patch.shaderScale === undefined) inst.shaderScale = patch.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE;
-    if (patch.ringCssPx === undefined) inst.ringCssPx = patch.kind === 'circle' ? 2 : 1;
+    if (patch.shaderScale === undefined) inst.shaderScale = (patch.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE) * inst.scale;
+    if (patch.ringCssPx === undefined) inst.ringCssPx = (patch.kind === 'circle' ? 2 : 1) * inst.scale;
   }
   if (patch.shaderScale !== undefined) inst.shaderScale = patch.shaderScale;
   if (patch.ringCssPx !== undefined) inst.ringCssPx = patch.ringCssPx;
   if (patch.opacityMul !== undefined) inst.opacityMul = patch.opacityMul;
+  if (patch.paused !== undefined && patch.paused !== inst.paused) {
+    inst.paused = patch.paused;
+    // Unpausing should kick the loop if it had idled because every visible
+    // instance was paused.
+    if (!patch.paused && SHARED && SHARED.rafId === 0 && SHARED.pausedAtMs === null && !SHARED.contextLost) {
+      startSharedLoop();
+    }
+  }
   if (dirty) resizeInstanceCanvas(inst);
 }
 
@@ -242,9 +257,14 @@ function tick(now: number): void {
   if (!SHARED) return;
   if (SHARED.contextLost) { SHARED.rafId = 0; return; }
 
-  let anyVisible = false;
-  for (const inst of SHARED.instances) { if (inst.visible) { anyVisible = true; break; } }
-  if (!anyVisible) { SHARED.rafId = 0; return; }
+  // Loop stays alive while at least one visible instance still has work to do
+  // — i.e. it's either unpaused (needs a fresh copy each frame) or paused but
+  // hasn't yet painted its first frame (initial-mount-paused case).
+  let anyWork = false;
+  for (const inst of SHARED.instances) {
+    if (inst.visible && (!inst.paused || !inst.everCopied)) { anyWork = true; break; }
+  }
+  if (!anyWork) { SHARED.rafId = 0; return; }
 
   SHARED.rafId = requestAnimationFrame(tick);
   if (now - lastFrameMs < FRAME_INTERVAL_MS) return;
@@ -258,13 +278,20 @@ function tick(now: number): void {
     SHARED.frameBitmap = (SHARED.glCanvas as OffscreenCanvas).transferToImageBitmap();
   }
 
-  for (const inst of SHARED.instances) { if (inst.visible) copyShaderToInstance(inst); }
+  for (const inst of SHARED.instances) {
+    if (!inst.visible) continue;
+    if (inst.paused && inst.everCopied) continue;
+    copyShaderToInstance(inst);
+    inst.everCopied = true;
+  }
 
   if (_glowCallback && SHARED.glowQueue.length > 0 && ++SHARED.glowSkip % GLOW_SKIP_FRAMES === 0) {
     const queue = SHARED.glowQueue;
     if (SHARED.glowIdx >= queue.length) SHARED.glowIdx = 0;
     const inst = queue[SHARED.glowIdx];
-    if (inst.visible) _glowCallback(inst, now);
+    // Skip glow frames for paused instances so their halo also freezes
+    // (otherwise the catch-light would keep travelling on a frozen ring).
+    if (inst.visible && !inst.paused) _glowCallback(inst, now);
     SHARED.glowIdx++;
   }
 }

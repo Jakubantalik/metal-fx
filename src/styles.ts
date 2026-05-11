@@ -41,6 +41,13 @@ const CSS = /* css */ `
 .metal-fx-root[data-theme='light']::after {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
+/* Circle variant gets a thicker outer rim than the button variant. */
+.metal-fx-root[data-variant='circle']::after {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+.metal-fx-root[data-theme='light'][data-variant='circle']::after {
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.06);
+}
 
 .metal-fx-canvas {
   position: absolute;
@@ -74,14 +81,14 @@ const CSS = /* css */ `
   border-radius: calc(var(--mfx-radius, 16px) - 3px);
 }
 .metal-fx-root[data-variant='circle'][data-shape='pill'] .metal-fx-inner {
-  inset: 1px;
-  border-radius: calc(var(--mfx-radius, 20px) - 1px);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  inset: 0;
+  border-radius: var(--mfx-radius, 20px);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .metal-fx-root[data-variant='circle'][data-shape='circle'] .metal-fx-inner {
-  inset: 2px;
-  border-radius: calc(var(--mfx-radius, 16px) - 2px);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  inset: 0;
+  border-radius: var(--mfx-radius, 16px);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 /* Circle-variant hairline alpha — light mode.
    Source-of-truth: index.html L2261-2267. The 0.45-alpha black inset that
@@ -95,7 +102,7 @@ const CSS = /* css */ `
    between inner element and shader to compensate for. */
 .metal-fx-root[data-theme='light'][data-variant='circle'][data-shape='pill'] .metal-fx-inner,
 .metal-fx-root[data-theme='light'][data-variant='circle'][data-shape='circle'] .metal-fx-inner {
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
 /* ─── Combined glow SVG (z=3) ──────────────────────────────────────────────

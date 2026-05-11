@@ -31,7 +31,19 @@ export interface MetalFxInstance {
   shaderScale: number;
   opacityMul: number;
   visible: boolean;
+  /** Per-instance freeze flag. When true the instance's 2D canvas keeps the
+   *  last copied frame; the shared GL loop continues for any other unpaused
+   *  instance. */
+  paused: boolean;
+  /** Set to true after the first successful copyShaderToInstance — so an
+   *  instance that mounts already paused still gets one frame painted before
+   *  it freezes (otherwise it would render a blank canvas). */
+  everCopied: boolean;
   dpr: number;
+  /** Master scale multiplier for absolute-pixel internals (glow stroke
+   *  widths/blurs, reflection stroke band, etc.). 1 is the baseline. Set to
+   *  2 for a CSS-zoomed 2× hero so glow + reflection grow with the layout. */
+  scale: number;
   onAfterFrame?: () => void;
 }
 

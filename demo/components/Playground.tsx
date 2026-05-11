@@ -45,16 +45,28 @@ function TabBtn({ active, ...props }: React.ButtonHTMLAttributes<HTMLButtonEleme
   );
 }
 
-const demoPillClass = 'w-[140px] h-10 rounded-full border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) text-sm font-medium font-inherit leading-[17.938px] tracking-normal whitespace-nowrap cursor-pointer flex items-center justify-center p-0';
-const demoCircleClass = 'size-10 rounded-full border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) cursor-pointer flex items-center justify-center p-0';
+const pillBaseClass = 'h-10 rounded-full border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) cursor-pointer flex items-center justify-center p-0';
+const demoPillClass = `${pillBaseClass} w-[140px] text-sm font-medium font-inherit leading-[17.938px] tracking-normal whitespace-nowrap`;
+const demoCircleClass = `${pillBaseClass} w-10`;
 const reflectTargetClass = 'h-10 rounded-full bg-(--pill-bg) border border-(--pill-border) shadow-(--pill-shadow) text-(--pill-fg) text-sm font-medium px-4 flex items-center cursor-default';
 
-export function Playground({ theme }: { theme: Theme }) {
+export function Playground({
+  theme,
+  strength,
+  onStrengthChange,
+}: {
+  theme: Theme;
+  /** Strength as 0..100, lifted to App so it also drives the hero examples. */
+  strength: number;
+  onStrengthChange: (value: number) => void;
+}) {
   const [tab, setTab] = useState<PlaygroundTab>('default');
   const [variant, setVariant] = useState<MetalFxVariant>('button');
   const [preset, setPreset] = useState<MetalFxPreset>('chromatic');
-  const [strength, setStrength] = useState(100);
-  const [paused, setPaused] = useState(false);
+  // Playground starts paused so the page loads quietly; the PlayPauseToggle
+  // below only flips this local state, so the surrounding Examples keep
+  // auto-playing regardless.
+  const [paused, setPaused] = useState(true);
   const [disableGlow, setDisableGlow] = useState(false);
   const [disableReflection, setDisableReflection] = useState(false);
   const playPauseRef = useRef<HTMLButtonElement>(null);
@@ -114,7 +126,7 @@ export function Playground({ theme }: { theme: Theme }) {
                 max={100}
                 step={1}
                 value={strength}
-                onChange={(e) => setStrength(Number(e.target.value))}
+                onChange={(e) => onStrengthChange(Number(e.target.value))}
                 aria-label="Effect strength"
               />
             </div>
@@ -139,17 +151,8 @@ export function Playground({ theme }: { theme: Theme }) {
             <input className="flex-1 min-w-0 border-none bg-transparent text-sm font-medium font-inherit outline-none text-inherit placeholder:text-current placeholder:opacity-30" type="search" placeholder="Search" spellCheck={false} tabIndex={-1} aria-label="Search" />
           </label>
 
-          <MetalFx
-            key={`${tab}-${variant}-${preset}`}
-            preset={preset}
-            variant={tab === 'shadcn' && variant === 'circle' ? 'circle' : variant}
-            theme={theme}
-            strength={strength / 100}
-            paused={paused}
-            disableGlow={disableGlow}
-            reflectionTargets={reflectionTargets}
-          >
-            {tab === 'default' ? (
+          {(() => {
+            const child = tab === 'default' ? (
               variant === 'circle' ? (
                 <button type="button" className={demoCircleClass}>
                   <ArrowUpIcon />
@@ -165,8 +168,22 @@ export function Playground({ theme }: { theme: Theme }) {
               ) : (
                 <Button variant="default">Click me</Button>
               )
-            )}
-          </MetalFx>
+            );
+            return (
+              <MetalFx
+                key={`${tab}-${variant}-${preset}`}
+                preset={preset}
+                variant={tab === 'shadcn' && variant === 'circle' ? 'circle' : variant}
+                theme={theme}
+                strength={strength / 100}
+                paused={paused}
+                disableGlow={disableGlow}
+                reflectionTargets={reflectionTargets}
+              >
+                {child}
+              </MetalFx>
+            );
+          })()}
         </div>
 
         <PlayPauseToggle ref={playPauseRef} playing={!paused} onToggle={() => setPaused((p) => !p)} />
