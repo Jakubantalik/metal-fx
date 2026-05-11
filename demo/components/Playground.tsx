@@ -144,7 +144,7 @@ export function Playground({
         </div>
       </div>
 
-      <div className="relative w-full min-h-[304px] rounded-[10px] bg-(--surface) flex flex-col items-center justify-center p-12 gap-6">
+      <div className="relative w-full min-h-[304px] rounded-[10px] bg-(--surface) flex flex-col items-center justify-center p-12 gap-6 max-sm:p-6">
         <div className="flex items-center gap-3">
           <label ref={neighborRef} className="relative flex items-center gap-1.5 w-[180px] h-10 rounded-full py-2.5 pr-2 pl-3 bg-(--pill-bg) border border-(--pill-border) shadow-(--pill-shadow) text-(--pill-fg) text-sm font-medium cursor-text [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:stroke-[#8B8B8B] [&_svg]:fill-none">
             <SearchIcon18 />
@@ -186,10 +186,10 @@ export function Playground({
           })()}
         </div>
 
-        <PlayPauseToggle ref={playPauseRef} playing={!paused} onToggle={() => setPaused((p) => !p)} />
+        <PlayPauseToggle ref={playPauseRef} playing={!paused} onToggle={() => setPaused((p) => !p)} className="max-sm:absolute max-sm:bottom-6 max-sm:left-1/2 max-sm:-translate-x-1/2" />
       </div>
 
-      <div className="flex items-start h-auto bg-(--code-bg) rounded-[10px] py-1.5 pr-10 pl-3 overflow-hidden relative">
+      <div className="flex items-start h-auto bg-(--code-bg) rounded-[10px] py-1.5 pr-10 pl-3 overflow-hidden relative max-sm:hidden">
         <code className="font-[Roboto_Mono,monospace] text-sm leading-[22px] text-(--code-text) whitespace-pre overflow-x-auto min-w-0 flex-1">{snippet}</code>
         <CopyButton getText={() => snippet} />
       </div>

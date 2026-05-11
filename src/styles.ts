@@ -94,15 +94,17 @@ const CSS = /* css */ `
    Source-of-truth: index.html L2261-2267. The 0.45-alpha black inset that
    reads as a single-pixel frame against the dark interior is too heavy
    on a #ffffff inner: it ends up looking like a hard 2-px black ring
-   against the iridescent shader. Drop to 0.18 (canonical mid-grey) so the
-   hairline reads as a soft edge that just defines the inner silhouette
-   without competing with the shader. NOTE: we keep the dark-mode inset
+   against the iridescent shader. Suppressed entirely (alpha 0) — the
+   shader's own iridescent rim already defines the silhouette in light
+   mode, so an extra dark hairline only competes with it. The rule is
+   kept (rather than deleted) as a tunable hook in case a future variant
+   wants to re-introduce a soft edge. NOTE: we keep the dark-mode inset
    and border-radius values because — unlike index.html — our renderer
    does NOT overscan the canvas in light mode, so there is no 1-px gap
    between inner element and shader to compensate for. */
 .metal-fx-root[data-theme='light'][data-variant='circle'][data-shape='pill'] .metal-fx-inner,
 .metal-fx-root[data-theme='light'][data-variant='circle'][data-shape='circle'] .metal-fx-inner {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0);
 }
 
 /* ─── Combined glow SVG (z=3) ──────────────────────────────────────────────
