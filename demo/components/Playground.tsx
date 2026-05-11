@@ -12,20 +12,28 @@ const VARIANTS: MetalFxVariant[] = ['button', 'circle'];
 
 type PlaygroundTab = 'default' | 'shadcn';
 
-function buildSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number) {
+function buildSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number, disableGlow: boolean, disableReflection: boolean) {
   const props = [`preset="${preset}"`];
   if (variant !== 'button') props.push(`variant="${variant}"`);
   if (strength !== 1) props.push(`strength={${strength.toFixed(2)}}`);
+  if (disableGlow) props.push('disableGlow');
+  if (!disableReflection) props.push('reflectionTargets={[siblingRef]}');
   const child = variant === 'circle'
     ? '  <button aria-label="Send"><ArrowUpIcon /></button>'
     : '  <button>Upgrade to Pro</button>';
   return `<MetalFx ${props.join(' ')}>\n${child}\n</MetalFx>`;
 }
 
-function buildShadcnSnippet(preset: MetalFxPreset, strength: number, btnVariant: string) {
+function buildShadcnSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number, btnVariant: string, disableGlow: boolean, disableReflection: boolean) {
   const props = [`preset="${preset}"`];
+  if (variant !== 'button') props.push(`variant="${variant}"`);
   if (strength !== 1) props.push(`strength={${strength.toFixed(2)}}`);
-  return `<MetalFx ${props.join(' ')}>\n  <Button variant="${btnVariant}">Click me</Button>\n</MetalFx>`;
+  if (disableGlow) props.push('disableGlow');
+  if (!disableReflection) props.push('reflectionTargets={[siblingRef]}');
+  const child = variant === 'circle'
+    ? `  <Button variant="${btnVariant}" size="icon"><ArrowUpIcon /></Button>`
+    : `  <Button variant="${btnVariant}">Click me</Button>`;
+  return `<MetalFx ${props.join(' ')}>\n${child}\n</MetalFx>`;
 }
 
 const tabBtnBase = 'flex items-center justify-center h-9 px-3 border-none rounded-lg font-[Inter,sans-serif] text-[13px] font-normal leading-[14px] cursor-pointer transition-[background-color,color] duration-150 whitespace-nowrap [-webkit-tap-highlight-color:transparent] hover:bg-(--tab-hover-bg) hover:text-(--tab-hover-color) focus-visible:outline-2 focus-visible:outline-[rgba(255,255,255,0.5)] focus-visible:outline-offset-2';
@@ -73,8 +81,8 @@ export function Playground({
   const neighborRef = useRef<HTMLLabelElement>(null);
 
   const snippet = tab === 'default'
-    ? buildSnippet(variant, preset, strength / 100)
-    : buildShadcnSnippet(preset, strength / 100, 'default');
+    ? buildSnippet(variant, preset, strength / 100, disableGlow, disableReflection)
+    : buildShadcnSnippet(variant, preset, strength / 100, 'default', disableGlow, disableReflection);
 
   const reflectionTargets = disableReflection ? undefined : [playPauseRef, neighborRef];
 
@@ -164,9 +172,9 @@ export function Playground({
               )
             ) : (
               variant === 'circle' ? (
-                <Button variant="default" size="icon"><ArrowUpIcon /></Button>
+                <Button variant="default" size="icon" className="size-10"><ArrowUpIcon /></Button>
               ) : (
-                <Button variant="default">Click me</Button>
+                <Button variant="default" className="h-10 w-[140px]">Click me</Button>
               )
             );
             return (
