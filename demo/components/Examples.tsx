@@ -69,8 +69,8 @@ export function Examples({
       {/* Toolbar row */}
       <div className="relative w-full h-[370px] rounded-[30px] bg-(--surface) flex items-center justify-center pl-10 pr-20 py-12 overflow-hidden max-sm:h-auto max-sm:min-h-[200px] max-sm:px-5 max-sm:py-8 max-sm:rounded-[20px]">
         <div className="absolute -left-[22px] top-[144px] w-[663px] h-[234px] rounded-[20px] bg-[rgba(29,29,29,0.7)] border border-[rgba(44,47,54,0.52)] pointer-events-none max-sm:hidden" aria-hidden="true" />
-        <div className="relative z-10 flex items-center gap-3 max-sm:flex-wrap" role="group" aria-label="Hero toolbar">
-          <label className="hero-toolbar-search relative flex items-center gap-1.5 w-[235px] h-10 rounded-full py-2.5 pr-0.5 pl-3 bg-(--pill-bg) border border-(--pill-border) shadow-(--pill-shadow) text-(--pill-fg) text-sm font-medium leading-[17.938px] cursor-text [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:stroke-[#8B8B8B] [&_svg]:fill-none max-sm:w-full" ref={searchRef}>
+        <div className="relative z-10 flex items-center gap-3 max-sm:gap-2" role="group" aria-label="Hero toolbar">
+          <label className="hero-toolbar-search relative flex items-center gap-1.5 w-[235px] h-10 rounded-full py-2.5 pr-0.5 pl-3 bg-(--pill-bg) border border-(--pill-border) shadow-(--pill-shadow) text-(--pill-fg) text-sm font-medium leading-[17.938px] cursor-text [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:stroke-[#8B8B8B] [&_svg]:fill-none max-sm:w-auto max-sm:flex-1 max-sm:min-w-0" ref={searchRef}>
             <SearchIcon18 />
             <input
               className="hero-toolbar-search-input flex-1 min-w-0 border-none bg-transparent text-sm font-medium leading-[17.938px] font-inherit outline-none text-inherit placeholder:text-current placeholder:opacity-30"
