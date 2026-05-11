@@ -12,9 +12,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'demo/index.html'),
-        debug: resolve(__dirname, 'demo/debug.html'),
-        hero2x: resolve(__dirname, 'demo/2x.html'),
-        demosimple: resolve(__dirname, 'demo/demosimple.html'),
       },
     },
   },
