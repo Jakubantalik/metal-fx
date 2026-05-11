@@ -47,6 +47,7 @@ interface CreateInstanceOptions {
   paused?: boolean;
   scale?: number;
   onAfterFrame?: () => void;
+  onFirstCopy?: () => void;
 }
 
 export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
@@ -69,6 +70,7 @@ export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
     scale,
     onAfterFrame: opts.onAfterFrame,
+    onFirstCopy: opts.onFirstCopy,
   };
   resizeInstanceCanvas(inst);
   renderer.instances.add(inst);
@@ -208,6 +210,7 @@ function copyShaderToInstance(inst: MetalFxInstance): void {
   if (inst.opacityMul < 1) inst.ctx.globalAlpha = 1;
 
   punchInnerHole(inst);
+  if (inst.onFirstCopy) { const cb = inst.onFirstCopy; inst.onFirstCopy = undefined; cb(); }
   inst.onAfterFrame?.();
 }
 

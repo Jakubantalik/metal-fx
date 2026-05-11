@@ -45,6 +45,9 @@ export interface MetalFxInstance {
    *  2 for a CSS-zoomed 2× hero so glow + reflection grow with the layout. */
   scale: number;
   onAfterFrame?: () => void;
+  /** One-shot callback fired after the very first copyShaderToInstance.
+   *  Auto-cleared by the loop so it never fires twice. */
+  onFirstCopy?: () => void;
 }
 
 export interface SharedRenderer {
