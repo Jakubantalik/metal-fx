@@ -121,6 +121,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   const themeRef = useRef<'dark' | 'light'>('dark');
   const initialWrapperRadiusRef = useRef<number>(0);
 
+  const [ready, setReady] = useState(false);
   const resolvedTheme = useResolvedTheme(theme);
   // Write during render (not in an effect) so the glow callback always sees
   // the up-to-date theme on the very next tick.
@@ -206,6 +207,10 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       shaderScale,
       ringCssPx,
       scale,
+      onAfterFrame: () => {
+        setReady(true);
+        if (instanceRef.current) instanceRef.current.onAfterFrame = undefined;
+      },
     });
     root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
     root.style.borderRadius = `${initial.cornerRadius}px`;
@@ -322,8 +327,14 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   // --mfx-strength is consumed by downstream CSS (e.g. content opacity rules).
   // Spread style last so consumer inline styles can still override other props.
   const wrapperStyle = useMemo<CSSProperties>(
-    () => ({ ...style, ['--mfx-strength' as string]: String(Math.min(1, Math.max(0, strength))) }),
-    [style, strength]
+    () => ({
+      ...style,
+      ['--mfx-strength' as string]: String(Math.min(1, Math.max(0, strength))),
+      opacity: ready ? 1 : 0,
+      visibility: ready ? 'visible' : 'hidden',
+      transition: ready ? 'opacity 0.15s ease-out' : 'none',
+    }),
+    [style, strength, ready]
   );
 
   return (
