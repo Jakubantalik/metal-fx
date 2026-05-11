@@ -207,10 +207,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       shaderScale,
       ringCssPx,
       scale,
-      onAfterFrame: () => {
-        setReady(true);
-        if (instanceRef.current) instanceRef.current.onAfterFrame = undefined;
-      },
+      onFirstCopy: () => setReady(true),
     });
     root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
     root.style.borderRadius = `${initial.cornerRadius}px`;
