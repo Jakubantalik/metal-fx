@@ -133,10 +133,10 @@ export function buildSvgMarkup(opts: GlowOptions, p: string): string {
   const innerR = Math.max(0, R - ringInset);
   // Filter region grows with scale so blurred strokes don't get clipped at
   // bigger sizes. The 200/540/440 baseline matches the canonical 1× pill.
-  const FR_OFF = 200 * s;
-  const FR_W = 540 * s;
-  const FR_H = 440 * s;
-  const fr = `x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"`;
+  const fX = (-200 * s).toFixed(0), fY = fX;
+  const fW = (540 * s).toFixed(0), fH = (440 * s).toFixed(0);
+  const fRect = `x="${fX}" y="${fY}" width="${fW}" height="${fH}"`;
+  const fr = `${fRect} filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"`;
   // Stroke widths and blur stdDeviations are absolute SVG units; multiply
   // by `s` so they remain proportional when viewBox grows with the host.
   const sw = (n: number) => (n * s).toFixed(3);
@@ -150,17 +150,23 @@ export function buildSvgMarkup(opts: GlowOptions, p: string): string {
     `<filter id="${p}_ebO" ${fr}><feGaussianBlur stdDeviation="${sd(EXTRA_BLUR_OUTER)}"/></filter>`,
     `<filter id="${p}_ebC" ${fr}><feGaussianBlur stdDeviation="${sd(EXTRA_BLUR_CORE)}"/></filter>`,
     `<radialGradient id="${p}_fg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="white"/><stop offset="0.30" stop-color="white"/><stop offset="0.65" stop-color="#404040"/><stop offset="1" stop-color="black"/></radialGradient>`,
-    `<mask id="${p}_fm" maskUnits="userSpaceOnUse" x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}"><rect x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}" fill="black"/><circle id="${p}_fc" cx="0" cy="0" r="${(EXTRA_FADE_R * s).toFixed(3)}" fill="url(#${p}_fg)"/></mask>`,
-    `<mask id="${p}_rm" maskUnits="userSpaceOnUse" x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}"><rect x="${(-FR_OFF).toFixed(0)}" y="${(-FR_OFF).toFixed(0)}" width="${FR_W.toFixed(0)}" height="${FR_H.toFixed(0)}" fill="#808080"/><rect x="0" y="0" width="${W}" height="${H}" rx="${R}" ry="${R}" fill="white"/><rect x="${ringInset}" y="${ringInset}" width="${W - ringInset * 2}" height="${H - ringInset * 2}" rx="${innerR}" ry="${innerR}" fill="black"/></mask>`,
+    `<mask id="${p}_fm" maskUnits="userSpaceOnUse" ${fRect}><rect ${fRect} fill="black"/><circle id="${p}_fc" cx="0" cy="0" r="${(EXTRA_FADE_R * s).toFixed(3)}" fill="url(#${p}_fg)"/></mask>`,
+    `<mask id="${p}_rm" maskUnits="userSpaceOnUse" ${fRect}><rect ${fRect} fill="#808080"/><rect x="0" y="0" width="${W}" height="${H}" rx="${R}" ry="${R}" fill="white"/><rect x="${ringInset}" y="${ringInset}" width="${W - ringInset * 2}" height="${H - ringInset * 2}" rx="${innerR}" ry="${innerR}" fill="black"/></mask>`,
     '</defs>',
+    // Safari clips mask to the masked element's bbox; our horizontal strokes
+    // have zero height, so the mask becomes a sliver. These spacer rects
+    // inflate the bbox to the full filter region.
     `<g id="${p}_h" mask="url(#${p}_rm)" opacity="0">`,
+    `<rect ${fRect} fill="none" pointer-events="none"/>`,
     `<g id="${p}_hI" stroke="white">`,
     `<path id="${p}_pXl" stroke-width="${sw(26.4)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.385" filter="url(#${p}_bXl)"/>`,
     `<path id="${p}_pLg" stroke-width="${sw(15.6)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.595" filter="url(#${p}_bLg)"/>`,
     `<path id="${p}_pMd" stroke-width="${sw(7.2)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.70" filter="url(#${p}_bMd)"/>`,
     `<path id="${p}_pSm" stroke-width="${sw(3.0)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.70" filter="url(#${p}_bSm)"/>`,
     '</g></g>',
-    `<g id="${p}_e" mask="url(#${p}_rm)" opacity="0"><g mask="url(#${p}_fm)">`,
+    `<g id="${p}_e" mask="url(#${p}_rm)" opacity="0">`,
+    `<rect ${fRect} fill="none" pointer-events="none"/>`,
+    `<g mask="url(#${p}_fm)">`,
     `<g id="${p}_eI" stroke="white">`,
     `<path id="${p}_eO" stroke-width="${sw(EXTRA_STROKE_OUTER)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85" filter="url(#${p}_ebO)"/>`,
     `<path id="${p}_eC" stroke-width="${sw(EXTRA_STROKE_CORE)}" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="1.0" filter="url(#${p}_ebC)"/>`,
