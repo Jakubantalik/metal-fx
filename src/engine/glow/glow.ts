@@ -71,6 +71,7 @@ export interface GlowHandles {
   wanderS: number; wanderTargetS: number; wanderFrames: number;
   tintFrom: ShaderRGB; tintTarget: ShaderRGB; tintTween: Tween | null; tintHoldUntil: number;
   lastHaloStroke: string; lastExtraStroke: string;
+  activeArc?: number;
 }
 
 let glowIdSeq = 0;
@@ -129,67 +130,128 @@ export function injectGlow(container: HTMLElement, opts: GlowOptions): GlowHandl
     wanderS: 0, wanderTargetS: 0, wanderFrames: 0,
     tintFrom: { r: 255, g: 255, b: 255 }, tintTarget: { r: 255, g: 255, b: 255 }, tintTween: null, tintHoldUntil: 0,
     lastHaloStroke: '', lastExtraStroke: '',
+    activeArc: undefined,
   };
+}
+
+function getClosestArc(
+  mx: number,
+  my: number,
+  w: number,
+  h: number,
+  r: number,
+  kind: 'pill' | 'circle',
+  scale: number
+): number {
+  const perimLen = shapePerim(w, h, r, kind);
+  const insetS = INSET * scale;
+  let bestArc = 0;
+  let minDist = Infinity;
+  const tempPt = { x: 0, y: 0 };
+  const steps = 48;
+  for (let i = 0; i < steps; i++) {
+    const arc = (i / steps) * perimLen;
+    sampleAtArc(arc, w, h, r, insetS, 0, kind, tempPt);
+    const dx = tempPt.x - mx;
+    const dy = tempPt.y - my;
+    const dist = dx * dx + dy * dy;
+    if (dist < minDist) {
+      minDist = dist;
+      bestArc = arc;
+    }
+  }
+  return bestArc;
 }
 
 // ─── Per-frame update ─────────────────────────────────────────────────────
 
-export function updateGlow(h: GlowHandles, inst: MetalFxInstance, nowMs: number, strengthMul: number, theme: 'dark' | 'light' = 'dark'): void {
+export function updateGlow(
+  h: GlowHandles,
+  inst: MetalFxInstance,
+  nowMs: number,
+  strengthMul: number,
+  theme: 'dark' | 'light' = 'dark',
+  pointerPos: { x: number; y: number } | null = null,
+  interactive = false
+): void {
   const { width: W, height: H, cornerRadius: R, perim } = h;
   if (perim.length === 0) return;
 
   const halfWin = 2;
+  const perimLen = shapePerim(W, H, R, h.kind);
+  const isHovered = interactive && pointerPos !== null;
 
-  let maxLum = -1, maxIdx = h.currentIdx, curLum = 0;
-  for (let i = 0; i < perim.length; i++) {
-    const pt = perim[i];
-    const lum = sampleShaderLumAt(inst, pt.x, pt.y, halfWin);
-    if (lum > maxLum) { maxLum = lum; maxIdx = i; }
-    if (i === h.currentIdx) curLum = lum;
+  if (h.activeArc === undefined) {
+    h.activeArc = perim[h.currentIdx].arc;
   }
 
-  const dwellActive = h.appearedAt > 0 && nowMs - h.appearedAt < MIN_DWELL_MS;
-  const targetOp = BASE_OP + (PEAK_OP - BASE_OP) * smoothstep(LO, HI, curLum);
-  const rivalDominates = !dwellActive && maxLum - curLum > RELOCATE_DELTA;
+  if (isHovered) {
+    const targetArc = getClosestArc(pointerPos.x, pointerPos.y, W, H, R, h.kind, h.scale);
+    let diff = targetArc - h.activeArc;
+    diff = ((diff + perimLen / 2) % perimLen + perimLen) % perimLen - perimLen / 2;
+    h.activeArc += diff * 0.18; // smooth tracking spring lerp
+    h.activeArc = (h.activeArc + perimLen) % perimLen;
 
-  if (!h.relocTween || h.relocTween.done) {
-    if (h.appearedAt === 0) {
-      h.currentIdx = maxIdx; h.appearedAt = nowMs;
-      h.wanderS = 0; h.wanderTargetS = 0; h.wanderFrames = 0;
-      h.relocTween = tween(0, targetOp, RELOC_FADE_MS, ease.smoothstep);
-      tweenStart(h.relocTween, nowMs);
-    } else if (h.relocTween?.done && h.relocTween.to === 0) {
-      h.currentIdx = h.relocNextIdx; h.appearedAt = nowMs;
-      h.wanderS = 0; h.wanderTargetS = 0; h.wanderFrames = 0;
-      const np = perim[h.currentIdx];
-      const nl = sampleShaderLumAt(inst, np.x, np.y, halfWin);
-      const fadeInTarget = BASE_OP + (PEAK_OP - BASE_OP) * smoothstep(LO, HI, nl);
-      h.relocTween = tween(0, fadeInTarget, RELOC_FADE_MS, ease.smoothstep);
-      tweenStart(h.relocTween, nowMs);
-    } else if (rivalDominates) {
-      h.relocNextIdx = maxIdx;
-      h.relocTween = tween(h.glowOpacity, 0, RELOC_FADE_MS, ease.smoothstep);
-      tweenStart(h.relocTween, nowMs);
-    } else {
-      h.glowOpacity += (targetOp - h.glowOpacity) * FADE_RATE;
+    const targetOp = PEAK_OP;
+    h.glowOpacity += (targetOp - h.glowOpacity) * 0.12;
+
+    h.appearedAt = nowMs;
+    h.relocTween = null;
+  } else {
+    let maxLum = -1, maxIdx = h.currentIdx, curLum = 0;
+    for (let i = 0; i < perim.length; i++) {
+      const pt = perim[i];
+      const lum = sampleShaderLumAt(inst, pt.x, pt.y, halfWin);
+      if (lum > maxLum) { maxLum = lum; maxIdx = i; }
+      if (i === h.currentIdx) curLum = lum;
     }
-  }
 
-  if (h.relocTween) {
-    h.glowOpacity = tweenTick(h.relocTween, nowMs);
+    const dwellActive = h.appearedAt > 0 && nowMs - h.appearedAt < MIN_DWELL_MS;
+    const targetOp = BASE_OP + (PEAK_OP - BASE_OP) * smoothstep(LO, HI, curLum);
+    const rivalDominates = !dwellActive && maxLum - curLum > RELOCATE_DELTA;
+
+    if (!h.relocTween || h.relocTween.done) {
+      if (h.appearedAt === 0) {
+        h.currentIdx = maxIdx; h.appearedAt = nowMs;
+        h.wanderS = 0; h.wanderTargetS = 0; h.wanderFrames = 0;
+        h.relocTween = tween(0, targetOp, RELOC_FADE_MS, ease.smoothstep);
+        tweenStart(h.relocTween, nowMs);
+      } else if (h.relocTween?.done && h.relocTween.to === 0) {
+        h.currentIdx = h.relocNextIdx; h.appearedAt = nowMs;
+        h.wanderS = 0; h.wanderTargetS = 0; h.wanderFrames = 0;
+        const np = perim[h.currentIdx];
+        const nl = sampleShaderLumAt(inst, np.x, np.y, halfWin);
+        const fadeInTarget = BASE_OP + (PEAK_OP - BASE_OP) * smoothstep(LO, HI, nl);
+        h.relocTween = tween(0, fadeInTarget, RELOC_FADE_MS, ease.smoothstep);
+        tweenStart(h.relocTween, nowMs);
+      } else if (rivalDominates) {
+        h.relocNextIdx = maxIdx;
+        h.relocTween = tween(h.glowOpacity, 0, RELOC_FADE_MS, ease.smoothstep);
+        tweenStart(h.relocTween, nowMs);
+      } else {
+        h.glowOpacity += (targetOp - h.glowOpacity) * FADE_RATE;
+      }
+    }
+
+    if (h.relocTween) {
+      h.glowOpacity = tweenTick(h.relocTween, nowMs);
+    }
+    h.glowOpacity = Math.max(0, Math.min(1, h.glowOpacity));
+
+    const targetArc = perim[h.currentIdx].arc;
+    let diff = targetArc - h.activeArc;
+    diff = ((diff + perimLen / 2) % perimLen + perimLen) % perimLen - perimLen / 2;
+    h.activeArc += diff * 0.05; // ambient slide
+    h.activeArc = (h.activeArc + perimLen) % perimLen;
   }
-  h.glowOpacity = Math.max(0, Math.min(1, h.glowOpacity));
 
   const ratio = shapePerim(W, H, R, h.kind) / rrPerim(REF_W, REF_H, REF_R);
   const wanderRange = WANDER_RANGE * ratio;
   if (h.wanderFrames++ >= WANDER_RETARGET) { h.wanderTargetS = (Math.random() * 2 - 1) * wanderRange; h.wanderFrames = 0; }
   h.wanderS += (h.wanderTargetS - h.wanderS) * WANDER_LERP;
 
-  const blobArc = perim[h.currentIdx].arc + h.wanderS;
+  const blobArc = isHovered ? h.activeArc : h.activeArc + h.wanderS;
 
-  // INSET / EXTRA_OUTWARD are absolute SVG-unit offsets; multiply by the
-  // master scale so the catch-light sits at the right perpendicular distance
-  // when the host element is rendered at non-1× layout (e.g. CSS zoom: 2).
   const insetS = INSET * h.scale;
   sampleAtArc(blobArc, W, H, R, insetS, 0, h.kind, _pt);
   const blobX = _pt.x, blobY = _pt.y;

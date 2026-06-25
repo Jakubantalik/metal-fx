@@ -71,3 +71,87 @@ html[data-theme="light"] .metal-fx .metal-fx-glow-svg {
   mix-blend-mode: multiply;
   filter: saturate(5.355) brightness(0.78);
 }
+
+/* Code Explorer styling for demo page */
+.code-explorer {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--code-bg);
+  border-radius: 16px;
+  padding: 6px;
+  gap: 4px;
+  width: 100%;
+}
+
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.code-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background-color: var(--tab-active-bg);
+  color: var(--text);
+}
+
+.code-content {
+  background-color: #09090b; /* Pitch black code field */
+  border-radius: 12px;
+  padding: 16px;
+  overflow-x: auto;
+  min-height: 80px;
+}
+
+html[data-theme="light"] .code-content {
+  background-color: #f6f6f6;
+}
+
+.code-content code {
+  font-family: "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  color: #a5d6ff;
+  line-height: 1.6;
+}
+
+html[data-theme="light"] .code-content code {
+  color: #005cc5;
+}
+
+/* Syntax Highlighting Tokens */
+.hl-keyword { color: var(--hl-keyword); }
+.hl-tag { color: var(--hl-tag); }
+.hl-component { color: var(--hl-component); }
+.hl-attr { color: var(--hl-attr); }
+.hl-string { color: var(--hl-string); }
+.hl-number { color: var(--hl-number); }
+.hl-comment { color: var(--hl-comment); }
+.hl-punctuation { color: var(--hl-punctuation); }
+
+

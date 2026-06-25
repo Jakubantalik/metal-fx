@@ -44,6 +44,8 @@ export interface MetalFxInstance {
    *  widths/blurs, reflection stroke band, etc.). 1 is the baseline. Set to
    *  2 for a CSS-zoomed 2× hero so glow + reflection grow with the layout. */
   scale: number;
+  pointerRef?: { current: { x: number; y: number } | null };
+  interactive?: boolean;
   onAfterFrame?: () => void;
   /** One-shot callback fired after the very first copyShaderToInstance.
    *  Auto-cleared by the loop so it never fires twice. */

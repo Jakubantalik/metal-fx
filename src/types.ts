@@ -138,6 +138,13 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
   scale?: number;
 
   /**
+   * Enable interactive cursor tracking. When true, the glow halo and catch-light
+   * will magnetically follow the cursor position.
+   * @default false
+   */
+  interactive?: boolean;
+
+  /**
    * Forwarded class name for the wrapper element.
    */
   className?: string;

@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { MetalFx, type MetalFxPreset, type MetalFxVariant } from '../../src';
 import type { Theme } from '../hooks/useTheme';
-import { cn } from '../lib/utils';
+import { cn, highlightCode } from '../lib/utils';
 import { CopyButton } from './CopyButton';
-import { ArrowUpIcon, SearchIcon18 } from './icons';
+import { ArrowUpIcon, SearchIcon18, ReactIcon } from './icons';
 import { PlayPauseToggle } from './PlayPauseToggle';
 import { Button } from './ui/button';
 
@@ -12,10 +12,11 @@ const VARIANTS: MetalFxVariant[] = ['button', 'circle'];
 
 type PlaygroundTab = 'default' | 'shadcn';
 
-function buildSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number, disableGlow: boolean, disableReflection: boolean) {
+function buildSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number, disableGlow: boolean, disableReflection: boolean, interactive: boolean) {
   const props = [`preset="${preset}"`];
   if (variant !== 'button') props.push(`variant="${variant}"`);
   if (strength !== 1) props.push(`strength={${strength.toFixed(2)}}`);
+  if (interactive) props.push('interactive');
   if (disableGlow) props.push('disableGlow');
   if (!disableReflection) props.push('reflectionTargets={[siblingRef]}');
   const child = variant === 'circle'
@@ -24,10 +25,11 @@ function buildSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: 
   return `<MetalFx ${props.join(' ')}>\n${child}\n</MetalFx>`;
 }
 
-function buildShadcnSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number, btnVariant: string, disableGlow: boolean, disableReflection: boolean) {
+function buildShadcnSnippet(variant: MetalFxVariant, preset: MetalFxPreset, strength: number, btnVariant: string, disableGlow: boolean, disableReflection: boolean, interactive: boolean) {
   const props = [`preset="${preset}"`];
   if (variant !== 'button') props.push(`variant="${variant}"`);
   if (strength !== 1) props.push(`strength={${strength.toFixed(2)}}`);
+  if (interactive) props.push('interactive');
   if (disableGlow) props.push('disableGlow');
   if (!disableReflection) props.push('reflectionTargets={[siblingRef]}');
   const child = variant === 'circle'
@@ -75,14 +77,15 @@ export function Playground({
   // below only flips this local state, so the surrounding Examples keep
   // auto-playing regardless.
   const [paused, setPaused] = useState(true);
+  const [interactive, setInteractive] = useState(true);
   const [disableGlow, setDisableGlow] = useState(false);
   const [disableReflection, setDisableReflection] = useState(false);
   const playPauseRef = useRef<HTMLButtonElement>(null);
   const neighborRef = useRef<HTMLLabelElement>(null);
 
   const snippet = tab === 'default'
-    ? buildSnippet(variant, preset, strength / 100, disableGlow, disableReflection)
-    : buildShadcnSnippet(variant, preset, strength / 100, 'default', disableGlow, disableReflection);
+    ? buildSnippet(variant, preset, strength / 100, disableGlow, disableReflection, interactive)
+    : buildShadcnSnippet(variant, preset, strength / 100, 'default', disableGlow, disableReflection, interactive);
 
   const reflectionTargets = disableReflection ? undefined : [playPauseRef, neighborRef];
 
@@ -145,6 +148,7 @@ export function Playground({
           <div className="flex flex-col gap-[9px] min-w-0">
             <span className="text-xs font-normal leading-[14px] text-(--text-muted)">Options</span>
             <div className="flex gap-2 items-center">
+              <TabBtn active={interactive} onClick={() => setInteractive((i) => !i)}>Interactive Glow</TabBtn>
               <TabBtn active={disableGlow} onClick={() => setDisableGlow((g) => !g)}>No Glow</TabBtn>
               <TabBtn active={disableReflection} onClick={() => setDisableReflection((r) => !r)}>No Reflection</TabBtn>
             </div>
@@ -187,6 +191,7 @@ export function Playground({
                 paused={paused}
                 disableGlow={disableGlow}
                 reflectionTargets={reflectionTargets}
+                interactive={interactive}
               >
                 {child}
               </MetalFx>
@@ -197,9 +202,19 @@ export function Playground({
         <PlayPauseToggle ref={playPauseRef} playing={!paused} onToggle={() => setPaused((p) => !p)} className="max-sm:absolute max-sm:bottom-6 max-sm:left-1/2 max-sm:-translate-x-1/2" />
       </div>
 
-      <div className="flex items-start h-auto bg-(--code-bg) rounded-[10px] py-1.5 pr-10 pl-3 overflow-hidden relative max-sm:hidden">
-        <code className="font-[Roboto_Mono,monospace] text-sm leading-[22px] text-(--code-text) whitespace-pre overflow-x-auto min-w-0 flex-1">{snippet}</code>
-        <CopyButton getText={() => snippet} />
+      <div className="code-explorer max-sm:hidden mt-1.5">
+        <div className="code-header">
+          <div className="code-tabs flex items-center gap-1.5 pl-1.5">
+            <ReactIcon />
+            <span className="text-xs font-medium text-(--text-muted) select-none">
+              {tab === 'default' ? 'React' : 'React + Shadcn'}
+            </span>
+          </div>
+          <CopyButton variant="text" getText={() => snippet} />
+        </div>
+        <div className="code-content">
+          <pre><code className="whitespace-pre overflow-x-auto min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: highlightCode(snippet, 'tsx') }} /></pre>
+        </div>
       </div>
     </section>
   );

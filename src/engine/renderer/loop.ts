@@ -46,6 +46,8 @@ interface CreateInstanceOptions {
   opacityMul?: number;
   paused?: boolean;
   scale?: number;
+  pointerRef?: { current: { x: number; y: number } | null };
+  interactive?: boolean;
   onAfterFrame?: () => void;
   onFirstCopy?: () => void;
 }
@@ -69,6 +71,8 @@ export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
     everCopied: false,
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
     scale,
+    pointerRef: opts.pointerRef,
+    interactive: opts.interactive ?? false,
     onAfterFrame: opts.onAfterFrame,
     onFirstCopy: opts.onFirstCopy,
   };
@@ -99,7 +103,7 @@ export function unregisterGlowInstance(inst: MetalFxInstance): void {
 
 export function updateInstance(
   inst: MetalFxInstance,
-  patch: Partial<Pick<MetalFxInstance, 'cssWidth' | 'cssHeight' | 'cornerRadius' | 'kind' | 'shaderScale' | 'ringCssPx' | 'opacityMul' | 'paused' | 'scale'>>
+  patch: Partial<Pick<MetalFxInstance, 'cssWidth' | 'cssHeight' | 'cornerRadius' | 'kind' | 'shaderScale' | 'ringCssPx' | 'opacityMul' | 'paused' | 'scale' | 'interactive'>>
 ): void {
   let dirty = false;
   if (patch.cssWidth !== undefined && patch.cssWidth !== inst.cssWidth) { inst.cssWidth = patch.cssWidth; dirty = true; }
@@ -122,6 +126,7 @@ export function updateInstance(
       startSharedLoop();
     }
   }
+  if (patch.interactive !== undefined) inst.interactive = patch.interactive;
   if (dirty) resizeInstanceCanvas(inst);
 }
 
@@ -270,6 +275,17 @@ function tick(now: number): void {
   if (!anyWork) { SHARED.rafId = 0; return; }
 
   SHARED.rafId = requestAnimationFrame(tick);
+
+  // ─── 60fps updates (Mouse-hover tracking for active instances) ───
+  if (_glowCallback) {
+    for (const inst of SHARED.instances) {
+      if (inst.visible && !inst.paused && inst.interactive && inst.pointerRef?.current) {
+        _glowCallback(inst, now);
+      }
+    }
+  }
+
+  // ─── Throttled 15fps updates (WebGL render + canvas copy + ambient glow) ───
   if (now - lastFrameMs < FRAME_INTERVAL_MS) return;
   lastFrameMs = now;
 
@@ -294,7 +310,9 @@ function tick(now: number): void {
     const inst = queue[SHARED.glowIdx];
     // Skip glow frames for paused instances so their halo also freezes
     // (otherwise the catch-light would keep travelling on a frozen ring).
-    if (inst.visible && !inst.paused) _glowCallback(inst, now);
+    // Ensure we don't double-update interactive hovered buttons that already ran at 60fps.
+    const isHovered = inst.interactive && inst.pointerRef?.current;
+    if (inst.visible && !inst.paused && !isHovered) _glowCallback(inst, now);
     SHARED.glowIdx++;
   }
 }

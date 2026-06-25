@@ -46,7 +46,8 @@ const glowHandlesMap = new Map<MetalFxInstance, { handles: ReturnType<typeof inj
 setGlowCallback((inst, nowMs) => {
   const entry = glowHandlesMap.get(inst);
   if (!entry) return;
-  updateGlow(entry.handles, inst, nowMs, inst.opacityMul, entry.themeRef.current);
+  const pointerVal = inst.pointerRef?.current ?? null;
+  updateGlow(entry.handles, inst, nowMs, inst.opacityMul, entry.themeRef.current, pointerVal, inst.interactive);
 });
 
 /**
@@ -100,6 +101,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     shaderScale,
     ringCssPx,
     scale = 1,
+    interactive = false,
     className,
     style,
     ...rest
@@ -120,6 +122,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   const glowHandlesRef = useRef<ReturnType<typeof injectGlow> | null>(null);
   const themeRef = useRef<'dark' | 'light'>('dark');
   const initialWrapperRadiusRef = useRef<number>(0);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
 
   const [ready, setReady] = useState(false);
   const resolvedTheme = useResolvedTheme(theme);
@@ -173,6 +176,12 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     if (Object.keys(patch).length > 0) updateInstance(inst, patch);
   }, [shaderScale, ringCssPx, scale]);
 
+  useEffect(() => {
+    const inst = instanceRef.current;
+    if (!inst) return;
+    updateInstance(inst, { interactive });
+  }, [interactive]);
+
   // useLayoutEffect (not useEffect) so the instance is created and the canvas
   // is sized synchronously before the browser paints — avoids a one-frame
   // flash of the unsized canvas.
@@ -207,6 +216,8 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       shaderScale,
       ringCssPx,
       scale,
+      pointerRef,
+      interactive,
       onFirstCopy: () => setReady(true),
     });
     root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
@@ -265,10 +276,24 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       registerGlowInstance(instanceRef.current);
     }
 
+    const handlePointerMove = (e: PointerEvent) => {
+      const rect = root.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      pointerRef.current = { x, y };
+    };
+    const handlePointerLeave = () => {
+      pointerRef.current = null;
+    };
+    root.addEventListener('pointermove', handlePointerMove);
+    root.addEventListener('pointerleave', handlePointerLeave);
+
     return () => {
       ro.disconnect();
       io?.disconnect();
       if (resizeRaf !== 0) cancelAnimationFrame(resizeRaf);
+      root.removeEventListener('pointermove', handlePointerMove);
+      root.removeEventListener('pointerleave', handlePointerLeave);
       const inst = instanceRef.current;
       if (inst) {
         glowHandlesMap.delete(inst);

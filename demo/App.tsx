@@ -5,6 +5,8 @@ import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { Playground } from './components/Playground';
 import { useTheme } from './hooks/useTheme';
+import { ReactIcon, TerminalIcon } from './components/icons';
+import { highlightCode } from './lib/utils';
 
 export function App() {
   const [theme, toggleTheme] = useTheme();
@@ -23,17 +25,33 @@ export function App() {
 
       <section className="w-full mb-6" aria-label="Installation">
         <h2 className="text-base font-normal leading-[34px] text-(--section-title-color) mb-1">Installation</h2>
-        <div className="flex items-center h-10 bg-(--code-bg) rounded-[10px] py-0.5 pr-10 pl-3 overflow-hidden relative">
-          <code className="font-[Roboto_Mono,monospace] text-sm leading-[22px] text-(--code-text) whitespace-pre overflow-x-auto min-w-0 flex-1">npm install metal-fx</code>
-          <CopyButton getText={() => 'npm install metal-fx'} />
+        <div className="code-explorer">
+          <div className="code-header">
+            <div className="code-tabs flex items-center gap-1.5 pl-1.5">
+              <TerminalIcon />
+              <span className="text-xs font-medium text-(--text-muted) select-none">Terminal</span>
+            </div>
+            <CopyButton variant="text" getText={() => 'npm install metal-fx'} />
+          </div>
+          <div className="code-content">
+            <code className="whitespace-pre overflow-x-auto min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: highlightCode('npm install metal-fx', 'bash') }} />
+          </div>
         </div>
       </section>
 
       <section className="w-full mb-6" aria-label="Usage">
         <h2 className="text-base font-normal leading-[34px] text-(--section-title-muted) mb-1">Usage</h2>
-        <div className="flex items-start h-auto bg-(--code-bg) rounded-[10px] py-1.5 pr-10 pl-3 overflow-hidden relative">
-          <code className="font-[Roboto_Mono,monospace] text-sm leading-[22px] text-(--code-text) whitespace-pre overflow-x-auto min-w-0 flex-1">{`import { MetalFx } from 'metal-fx';\n\n<MetalFx preset="chromatic" strength={1}>\n  <button>Upgrade to Pro</button>\n</MetalFx>`}</code>
-          <CopyButton getText={() => `import { MetalFx } from 'metal-fx';\n\n<MetalFx preset="chromatic" strength={1}>\n  <button>Upgrade to Pro</button>\n</MetalFx>`} />
+        <div className="code-explorer">
+          <div className="code-header">
+            <div className="code-tabs flex items-center gap-1.5 pl-1.5">
+              <ReactIcon />
+              <span className="text-xs font-medium text-(--text-muted) select-none">React</span>
+            </div>
+            <CopyButton variant="text" getText={() => `import { MetalFx } from 'metal-fx';\n\n<MetalFx preset="chromatic" strength={1}>\n  <button>Upgrade to Pro</button>\n</MetalFx>`} />
+          </div>
+          <div className="code-content">
+            <pre><code className="whitespace-pre overflow-x-auto min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: highlightCode(`import { MetalFx } from 'metal-fx';\n\n<MetalFx preset="chromatic" strength={1}>\n  <button>Upgrade to Pro</button>\n</MetalFx>`, 'tsx') }} /></pre>
+          </div>
         </div>
       </section>
 
