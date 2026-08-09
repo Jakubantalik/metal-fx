@@ -195,6 +195,48 @@ function serialize(p: PresetMode): string {
   return `{\n  ${lines.join('\n  ')}\n}`;
 }
 
+/**
+ * Copyable JSX for the arrow button on the stage. Tracks the live toggles so
+ * what you copy is what you're looking at — and omits anything sitting at its
+ * default, since a snippet full of no-op props teaches the wrong API.
+ *
+ * `theme` is deliberately absent: the playground pins it to drive the preview,
+ * but `'auto'` is the right default in a real app.
+ */
+function buildArrowUsage(
+  preset: PresetName,
+  strength: number,
+  glow: boolean,
+  reflect: boolean
+): string {
+  const props = [`preset="${preset}"`, 'variant="circle"'];
+  if (strength !== 100) props.push(`strength={${(strength / 100).toFixed(2)}}`);
+  if (!glow) props.push('disableGlow');
+  if (reflect) props.push('reflectionTargets={[autoChipRef]}');
+  return [
+    `<MetalFx ${props.join(' ')}>`,
+    '  <button type="button" aria-label="Send">',
+    '    <ArrowUpIcon />',
+    '  </button>',
+    '</MetalFx>',
+  ].join('\n');
+}
+
+function CodeBlock({ title, code, note }: { title: string; code: string; note?: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className={label}>{title}</span>
+      <div className="relative flex items-start overflow-hidden rounded-[10px] bg-(--code-bg) py-1.5 pr-10 pl-3">
+        <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-[Roboto_Mono,monospace] text-[13px] leading-[20px] text-(--code-text)">
+          {code}
+        </code>
+        <CopyButton getText={() => code} />
+      </div>
+      {note && <span className="text-[11px] text-(--text-muted) opacity-70">{note}</span>}
+    </div>
+  );
+}
+
 const pillBase =
   'h-10 rounded-full border border-(--pill-border) bg-(--pill-bg) text-(--pill-fg) shadow-(--pill-shadow) cursor-pointer flex items-center justify-center p-0';
 
@@ -234,6 +276,10 @@ export function PaperPlayground() {
     setParams((p) => ({ ...p, [k]: v }));
 
   const snippet = useMemo(() => serialize(params), [params]);
+  const arrowUsage = useMemo(
+    () => buildArrowUsage(base, strength, glow, reflect),
+    [base, strength, glow, reflect]
+  );
   const reflectionTargets = reflect ? [neighborRef, chipRef] : undefined;
 
   return (
@@ -336,16 +382,17 @@ export function PaperPlayground() {
             </div>
           </div>
 
-          <div className="relative flex items-start overflow-hidden rounded-[10px] bg-(--code-bg) py-1.5 pr-10 pl-3">
-            <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-[Roboto_Mono,monospace] text-[13px] leading-[20px] text-(--code-text)">
-              {snippet}
-            </code>
-            <CopyButton getText={() => snippet} />
-          </div>
-          <p className="text-[11px] text-(--text-muted) opacity-70">
-            Paste into <code className="font-[Roboto_Mono,monospace]">src/engine/presets.ts</code> as a
-            mode body.
-          </p>
+          <CodeBlock
+            title="Usage — arrow button"
+            code={arrowUsage}
+            note="The circle variant, as used on the send button above."
+          />
+
+          <CodeBlock
+            title="Preset body"
+            code={snippet}
+            note="Paste into src/engine/presets.ts as a mode body."
+          />
         </div>
 
         {/* ── Controls ──────────────────────────────────────────────── */}
