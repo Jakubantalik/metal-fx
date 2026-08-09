@@ -11,7 +11,16 @@ export type {
 // non-React integrations can drive the same renderer.
 export {
   PRESETS,
+  SHAPE_NONE,
+  SHAPE_CIRCLE,
+  SHAPE_DAISY,
+  SHAPE_DIAMOND,
+  SHAPE_METABALLS,
+  FIT_NONE,
+  FIT_CONTAIN,
+  FIT_COVER,
   hexToRgb,
+  hexToRgba,
   type Preset,
   type PresetMode,
   type PresetName,
@@ -23,6 +32,7 @@ export {
   destroyInstance,
   updateInstance,
   setSharedPreset,
+  setSharedPresetMode,
   pauseShared,
   resumeShared,
 } from './engine/renderer/loop';

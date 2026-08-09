@@ -1,7 +1,7 @@
 /** Animation loop, per-frame compositing, and instance lifecycle. */
-import { hexToRgb } from '../color';
+import { hexToRgba } from '../color';
 import { FRAME_INTERVAL_MS, GLOW_SKIP_FRAMES } from '../perfConfig';
-import { PRESETS, type PresetName, type PresetTheme } from '../presets';
+import { PRESETS, type PresetMode, type PresetName, type PresetTheme } from '../presets';
 import {
   SHARED,
   CANONICAL_PILL_W,
@@ -132,10 +132,31 @@ export function setInstanceVisible(inst: MetalFxInstance, visible: boolean): voi
   }
 }
 
+/** Set by `setSharedPresetMode`. While non-null it wins over the named
+ *  presets, so a live tuning surface isn't fighting every `<MetalFx preset>`
+ *  effect that re-runs on a theme toggle. */
+let presetOverride: PresetMode | null = null;
+
 export function setSharedPreset(name: PresetName, theme: PresetTheme): void {
   const s = ensureSharedRenderer();
-  s.preset = PRESETS[name].modes[theme];
+  s.preset = presetOverride ?? PRESETS[name].modes[theme];
   s.presetDirty = true;
+}
+
+/**
+ * Push raw Paper liquidMetal parameters into the shared renderer, bypassing
+ * the named presets. Pass `null` to hand control back to `preset` / `theme`.
+ *
+ * This exists for the playground: every instance shares one GL program, so
+ * tuning is necessarily global rather than per-instance.
+ */
+export function setSharedPresetMode(mode: PresetMode | null): void {
+  const s = ensureSharedRenderer();
+  presetOverride = mode;
+  if (mode) {
+    s.preset = mode;
+    s.presetDirty = true;
+  }
 }
 
 export function pauseShared(): void {
@@ -204,10 +225,15 @@ function copyShaderToInstance(inst: MetalFxInstance): void {
   const sx = Math.max(0, (cw - srcW) / 2);
   const sy = Math.max(0, (ch - srcH) / 2);
 
+  // Paper's shader has no `u_shaderOpacity` equivalent, so the preset-level
+  // opacity rides along with the per-instance `strength` multiplier here
+  // instead of being applied on the GPU.
+  const alpha = inst.opacityMul * SHARED.preset.shaderOpacity;
+
   inst.ctx.clearRect(0, 0, dw, dh);
-  if (inst.opacityMul < 1) inst.ctx.globalAlpha = inst.opacityMul;
+  if (alpha < 1) inst.ctx.globalAlpha = alpha;
   inst.ctx.drawImage(src, sx, sy, srcW, srcH, 0, 0, dw, dh);
-  if (inst.opacityMul < 1) inst.ctx.globalAlpha = 1;
+  if (alpha < 1) inst.ctx.globalAlpha = 1;
 
   punchInnerHole(inst);
   if (inst.onFirstCopy) { const cb = inst.onFirstCopy; inst.onFirstCopy = undefined; cb(); }
@@ -216,25 +242,40 @@ function copyShaderToInstance(inst: MetalFxInstance): void {
 
 function uploadPresetUniforms(): void {
   if (!SHARED) return;
-  const { gl, uniforms, preset, glCanvas } = SHARED;
+  const { gl, uniforms, preset, glCanvas, dpr } = SHARED;
+
+  // Shared by both stages.
   if (uniforms.u_resolution) gl.uniform2f(uniforms.u_resolution, glCanvas.width, glCanvas.height);
-  for (let i = 0; i < 7; i++) {
-    const cLoc = uniforms[`u_color${i + 1}`];
-    if (cLoc) { const [r, g, b] = hexToRgb(preset.colors[i]); gl.uniform3f(cLoc, r, g, b); }
-    const aLoc = uniforms[`u_alpha${i + 1}`];
-    if (aLoc) gl.uniform1f(aLoc, preset.alphas[i]);
-  }
-  if (uniforms.u_intensity) gl.uniform1f(uniforms.u_intensity, preset.intensity);
-  if (uniforms.u_scale) gl.uniform1f(uniforms.u_scale, preset.scale);
-  if (uniforms.u_direction) gl.uniform1f(uniforms.u_direction, (preset.direction * Math.PI) / 180);
+  // Paper's vertex stage divides the world box by this; leaving it at the
+  // default 0 collapses the box and the shader renders nothing.
+  if (uniforms.u_pixelRatio) gl.uniform1f(uniforms.u_pixelRatio, dpr);
+
+  // Fragment — material.
+  if (uniforms.u_colorBack) gl.uniform4fv(uniforms.u_colorBack, hexToRgba(preset.colorBack));
+  if (uniforms.u_colorTint) gl.uniform4fv(uniforms.u_colorTint, hexToRgba(preset.colorTint));
+  if (uniforms.u_repetition) gl.uniform1f(uniforms.u_repetition, preset.repetition);
   if (uniforms.u_softness) gl.uniform1f(uniforms.u_softness, preset.softness);
+  if (uniforms.u_shiftRed) gl.uniform1f(uniforms.u_shiftRed, preset.shiftRed);
+  if (uniforms.u_shiftBlue) gl.uniform1f(uniforms.u_shiftBlue, preset.shiftBlue);
   if (uniforms.u_distortion) gl.uniform1f(uniforms.u_distortion, preset.distortion);
-  if (uniforms.u_complexity) gl.uniform1f(uniforms.u_complexity, preset.complexity);
+  if (uniforms.u_contour) gl.uniform1f(uniforms.u_contour, preset.contour);
+  if (uniforms.u_angle) gl.uniform1f(uniforms.u_angle, preset.angle);
   if (uniforms.u_shape) gl.uniform1f(uniforms.u_shape, preset.shape);
-  if (uniforms.u_vignette) gl.uniform1f(uniforms.u_vignette, preset.vignette);
-  if (uniforms.u_vigOpacity) gl.uniform1f(uniforms.u_vigOpacity, preset.vigOpacity);
-  if (uniforms.u_blur) gl.uniform1f(uniforms.u_blur, preset.blur);
-  if (uniforms.u_shaderOpacity) gl.uniform1f(uniforms.u_shaderOpacity, preset.shaderOpacity);
+  // Procedural only — metal-fx never feeds a logo through the effect.
+  if (uniforms.u_isImage) gl.uniform1i(uniforms.u_isImage, 0);
+  if (uniforms.u_imageAspectRatio) gl.uniform1f(uniforms.u_imageAspectRatio, 1);
+
+  // Vertex — sizing.
+  if (uniforms.u_originX) gl.uniform1f(uniforms.u_originX, preset.originX);
+  if (uniforms.u_originY) gl.uniform1f(uniforms.u_originY, preset.originY);
+  if (uniforms.u_worldWidth) gl.uniform1f(uniforms.u_worldWidth, preset.worldWidth);
+  if (uniforms.u_worldHeight) gl.uniform1f(uniforms.u_worldHeight, preset.worldHeight);
+  if (uniforms.u_fit) gl.uniform1f(uniforms.u_fit, preset.fit);
+  if (uniforms.u_scale) gl.uniform1f(uniforms.u_scale, preset.scale);
+  if (uniforms.u_rotation) gl.uniform1f(uniforms.u_rotation, preset.rotation);
+  if (uniforms.u_offsetX) gl.uniform1f(uniforms.u_offsetX, preset.offsetX);
+  if (uniforms.u_offsetY) gl.uniform1f(uniforms.u_offsetY, preset.offsetY);
+
   SHARED.presetDirty = false;
 }
 

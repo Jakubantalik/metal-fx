@@ -52,10 +52,12 @@ export interface MetalFxInstance {
 
 export interface SharedRenderer {
   glCanvas: HTMLCanvasElement | OffscreenCanvas;
-  gl: WebGLRenderingContext;
+  gl: WebGL2RenderingContext;
   program: WebGLProgram;
   buffer: WebGLBuffer;
   uniforms: Record<string, WebGLUniformLocation | null>;
+  /** 1×1 placeholder bound to `u_image`; see buildGLPipeline. */
+  dummyTexture: WebGLTexture | null;
   preset: PresetMode;
   presetDirty: boolean;
   contextLost: boolean;
@@ -86,19 +88,31 @@ export function setContextRestoredCallback(cb: (() => void) | null): void {
 }
 
 const UNIFORM_NAMES = [
-  'u_resolution', 'u_time',
-  'u_color1', 'u_color2', 'u_color3', 'u_color4', 'u_color5', 'u_color6', 'u_color7',
-  'u_alpha1', 'u_alpha2', 'u_alpha3', 'u_alpha4', 'u_alpha5', 'u_alpha6', 'u_alpha7',
-  'u_intensity', 'u_scale', 'u_direction', 'u_softness',
-  'u_distortion', 'u_complexity', 'u_shape',
-  'u_vignette', 'u_vigOpacity', 'u_blur', 'u_shaderOpacity',
+  // Fragment stage (Paper liquidMetal)
+  'u_resolution', 'u_time', 'u_pixelRatio',
+  'u_colorBack', 'u_colorTint',
+  'u_repetition', 'u_softness', 'u_shiftRed', 'u_shiftBlue',
+  'u_distortion', 'u_contour', 'u_angle', 'u_shape', 'u_isImage', 'u_image',
+  // Vertex stage (Paper sizing)
+  'u_originX', 'u_originY', 'u_worldWidth', 'u_worldHeight',
+  'u_fit', 'u_scale', 'u_rotation', 'u_offsetX', 'u_offsetY',
+  'u_imageAspectRatio',
 ];
 
-function buildGLPipeline(gl: WebGLRenderingContext): {
-  program: WebGLProgram; buffer: WebGLBuffer; uniforms: Record<string, WebGLUniformLocation | null>;
+/**
+ * Paper's shader writes premultiplied color (`color *= opacity` before the
+ * backdrop composite), so the blend func has to be ONE / 1-SRC_ALPHA. Pairing
+ * premultiplied output with the classic SRC_ALPHA factor double-darkens every
+ * partially-transparent pixel — which on a 1px ring is the whole thing.
+ */
+function buildGLPipeline(gl: WebGL2RenderingContext): {
+  program: WebGLProgram;
+  buffer: WebGLBuffer;
+  uniforms: Record<string, WebGLUniformLocation | null>;
+  dummyTexture: WebGLTexture | null;
 } {
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
   const vert = compileShader(gl, gl.VERTEX_SHADER, VERT_SHADER_SRC);
   const frag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SHADER_SRC);
@@ -112,12 +126,32 @@ function buildGLPipeline(gl: WebGLRenderingContext): {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
   const posLoc = gl.getAttribLocation(program, 'a_position');
   gl.enableVertexAttribArray(posLoc);
+  // Paper declares `a_position` as vec4; feeding 2 floats leaves z=0, w=1,
+  // which is exactly the full-screen quad the shader expects.
   gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
   const uniforms: Record<string, WebGLUniformLocation | null> = {};
   for (const n of UNIFORM_NAMES) uniforms[n] = gl.getUniformLocation(program, n);
 
-  return { program, buffer, uniforms };
+  // `u_image` is dead at u_isImage=false, but an unbound sampler2D is
+  // undefined behaviour and renders black on some drivers. Bind 1×1 opaque
+  // black to texture unit 0 and leave it there for the life of the program.
+  const dummyTexture = gl.createTexture();
+  if (dummyTexture) {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, dummyTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 255])
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (uniforms.u_image) gl.uniform1i(uniforms.u_image, 0);
+  }
+
+  return { program, buffer, uniforms, dummyTexture };
 }
 
 export function ensureSharedRenderer(): SharedRenderer {
@@ -128,25 +162,27 @@ export function ensureSharedRenderer(): SharedRenderer {
   const useOffscreen = typeof OffscreenCanvas !== 'undefined';
 
   let glCanvas: HTMLCanvasElement | OffscreenCanvas;
-  let gl: WebGLRenderingContext | null;
+  let gl: WebGL2RenderingContext | null;
 
+  // WebGL2 is required, not preferred: Paper's shaders are `#version 300 es`
+  // and use textureSize/fwidth/textureGrad. There is no WebGL1 fallback path.
   if (useOffscreen) {
     glCanvas = new OffscreenCanvas(size, size);
-    gl = glCanvas.getContext('webgl', {
-      alpha: true, premultipliedAlpha: false, antialias: false,
-    }) as WebGLRenderingContext | null;
+    gl = glCanvas.getContext('webgl2', {
+      alpha: true, premultipliedAlpha: true, antialias: false,
+    }) as WebGL2RenderingContext | null;
   } else {
     const htmlCanvas = document.createElement('canvas');
     htmlCanvas.width = size;
     htmlCanvas.height = size;
-    gl = (htmlCanvas.getContext('webgl', {
-      alpha: true, premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: true,
-    }) ?? htmlCanvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+    gl = htmlCanvas.getContext('webgl2', {
+      alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true,
+    }) as WebGL2RenderingContext | null;
     glCanvas = htmlCanvas;
   }
-  if (!gl) throw new Error('metal-fx: WebGL not supported');
+  if (!gl) throw new Error('metal-fx: WebGL2 not supported');
 
-  const { program, buffer, uniforms } = buildGLPipeline(gl);
+  const { program, buffer, uniforms, dummyTexture } = buildGLPipeline(gl);
 
   const onContextLost = (e: Event) => { e.preventDefault(); if (SHARED) SHARED.contextLost = true; };
   const onContextRestored = () => {
@@ -155,6 +191,7 @@ export function ensureSharedRenderer(): SharedRenderer {
     SHARED.program = rebuilt.program;
     SHARED.buffer = rebuilt.buffer;
     SHARED.uniforms = rebuilt.uniforms;
+    SHARED.dummyTexture = rebuilt.dummyTexture;
     SHARED.presetDirty = true;
     SHARED.contextLost = false;
     _onContextRestored?.();
@@ -163,7 +200,7 @@ export function ensureSharedRenderer(): SharedRenderer {
   glCanvas.addEventListener('webglcontextrestored', onContextRestored as EventListener, false);
 
   SHARED = {
-    glCanvas, gl, program, buffer, uniforms,
+    glCanvas, gl, program, buffer, uniforms, dummyTexture,
     preset: PRESETS.chromatic.modes.dark, presetDirty: true,
     contextLost: false, useOffscreen, frameBitmap: null,
     startMs: performance.now(), pausedMs: 0, pausedAtMs: null,
@@ -177,11 +214,12 @@ export function ensureSharedRenderer(): SharedRenderer {
 
 export function teardownSharedRenderer(): void {
   if (!SHARED) return;
-  const { gl, program, buffer, frameBitmap } = SHARED;
+  const { gl, program, buffer, frameBitmap, dummyTexture } = SHARED;
   try {
     frameBitmap?.close();
     gl.deleteBuffer(buffer);
     gl.deleteProgram(program);
+    if (dummyTexture) gl.deleteTexture(dummyTexture);
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   } catch { /* swallow */ }
   SHARED = null;

@@ -1,54 +1,85 @@
 /**
  * Bundled preset configurations for the metal effect.
  *
- * Direct ports of the three JSON files shipped alongside the canonical demo:
- *   • preset-chromatic-both-modes.json
- *   • preset-silver-both-modes.json
- *   • preset-gold-both-modes.json
+ * These sit on top of Paper Shaders' `liquidMetal`, so the parameter set is
+ * Paper's, not the old plasma engine's. Baseline values come from Paper's own
+ * `fullScreenPreset` ("Backdrop") — the `shape: 'none'` variant, which fills
+ * the frame with the material instead of masking it to a circle/daisy/diamond.
+ * That's the mode we want: metal-fx carves the ring itself on the 2D canvas
+ * (`punchInnerHole`), so the shader should hand us a full sheet of metal.
  *
- * Each preset carries a `dark` and `light` mode block. Values are reproduced
- * byte-for-byte (including the `chromatic.dark.scale = 1.6` quirk that gives
- * the dark chromatic preset its noticeably chunkier features compared with
- * the other dark-mode entries).
+ * A note on color, because it is the big behavioural change from the plasma
+ * engine: Paper hardcodes the stripe endpoints inside the shader to
+ * near-white (.98,.98,1.) and near-black (.1,.1,.1). There is no palette to
+ * feed. All three presets therefore render the *same* silver material and
+ * differ only in `colorTint`, which the shader applies as a colour-burn pass
+ * weighted by the tint's alpha. `chromatic` is consequently an approximation
+ * — the old 5-stop rainbow is not reproducible here.
  *
- * The fragment shader only consumes uniforms 1..5 of `palette`/`alphas` for
- * the Plasma effect, but the JSON ships 7 colors / alphas to stay
- * forward-compatible with effect 24 (Noise Flow Wide). We keep the full 7 so
- * a future variant could opt into other effects without re-importing the
- * preset definitions.
+ * `colorBack` is composited *under* the material at its own alpha. Keep it
+ * fully transparent for ring use, otherwise the punched-out centre fills in.
+ *
+ * `speed` is applied JS-side to `u_time` before upload (cheaper than a
+ * uniform, and it matches how Paper's own mount drives time).
  */
 
 export type PresetName = 'chromatic' | 'silver' | 'gold';
 export type PresetTheme = 'dark' | 'light';
 
+/** Paper's `LiquidMetalShapes`. Only `none` fills the frame. */
+export const SHAPE_NONE = 0;
+export const SHAPE_CIRCLE = 1;
+export const SHAPE_DAISY = 2;
+export const SHAPE_DIAMOND = 3;
+export const SHAPE_METABALLS = 4;
+
+/** Paper's `ShaderFitOptions`. */
+export const FIT_NONE = 0;
+export const FIT_CONTAIN = 1;
+export const FIT_COVER = 2;
+
 export interface PresetMode {
-  /** 7-stop palette, indexed against `u_color1..u_color7`. */
-  colors: [string, string, string, string, string, string, string];
-  /** Per-stop alpha weights (0..1). */
-  alphas: [number, number, number, number, number, number, number];
-  /** Drift angle (degrees). Multiplied by π/180 before upload. */
-  direction: number;
-  /** Time multiplier applied JS-side before passing into the shader. */
+  /** Backdrop RGBA as `#rrggbb` or `#rrggbbaa`. Composited under the metal. */
+  colorBack: string;
+  /** Tint RGBA as `#rrggbb` or `#rrggbbaa`. Applied as colour-burn; the alpha
+   *  channel is the blend amount, not an opacity. */
+  colorTint: string;
+  /** Time multiplier applied JS-side before `u_time` is uploaded. */
   speed: number;
-  /** Plasma intensity (wave-field amplitude). */
-  intensity: number;
-  /** Noise zoom — smaller = chunkier features. */
-  scale: number;
-  /** Edge softness (effect 1 ignores; carried for parity). */
+  /** Stripe density (1..10). */
+  repetition: number;
+  /** Stripe transition blur, 0 = hard edge (0..1). */
   softness: number;
-  /** Warp strength on the field (0..1). */
+  /** R-channel dispersion (-1..1). */
+  shiftRed: number;
+  /** B-channel dispersion (-1..1). */
+  shiftBlue: number;
+  /** Simplex-noise warp over the stripe field (0..1). */
   distortion: number;
-  /** FBM octave / frequency multiplier. */
-  complexity: number;
-  /** Reserved (effect 1 ignores). */
+  /** How strongly the pattern follows the shape edge (0..1). */
+  contour: number;
+  /** Pattern drift direction in degrees (0..360). */
+  angle: number;
+  /** Mask shape. `SHAPE_NONE` fills the frame — the right choice for a ring. */
   shape: number;
-  /** 9-tap blur sample radius (0 = single tap). */
-  blur: number;
-  /** Vignette range (0..1). */
-  vignette: number;
-  /** Vignette darkening strength (0..1). */
-  vigOpacity: number;
-  /** Final alpha multiplier in the fragment shader (0..1). */
+  /** Overall zoom (0.01..4). */
+  scale: number;
+  /** Overall rotation in degrees (0..360). */
+  rotation: number;
+  /** Graphic centre offset (-1..1). */
+  offsetX: number;
+  offsetY: number;
+  /** Reference point for positioning the world box (0..1). */
+  originX: number;
+  originY: number;
+  /** Virtual size before fitting. 0 = use the canvas dimension. */
+  worldWidth: number;
+  worldHeight: number;
+  /** FIT_NONE / FIT_CONTAIN / FIT_COVER. */
+  fit: number;
+  /** Global alpha applied when the shared frame is copied onto an instance.
+   *  Paper's shader has no equivalent uniform, so this is a JS-side multiply
+   *  in `copyShaderToInstance` rather than something the GPU applies. */
   shaderOpacity: number;
 }
 
@@ -57,120 +88,54 @@ export interface Preset {
   modes: Record<PresetTheme, PresetMode>;
 }
 
-/** preset-chromatic-both-modes.json */
+/** Paper `fullScreenPreset` values, minus the opaque `#AAAAAC` backdrop. */
+const BASE: Omit<PresetMode, 'colorTint' | 'shaderOpacity'> = {
+  colorBack: '#00000000',
+  speed: 1,
+  repetition: 1.5,
+  softness: 0.05,
+  shiftRed: 0.3,
+  shiftBlue: 0.3,
+  distortion: 0.1,
+  contour: 0.4,
+  angle: 90,
+  shape: SHAPE_NONE,
+  scale: 1,
+  rotation: 0,
+  offsetX: 0,
+  offsetY: 0,
+  originX: 0.5,
+  originY: 0.5,
+  worldWidth: 0,
+  worldHeight: 0,
+  fit: FIT_CONTAIN,
+};
+
 const CHROMATIC: Preset = {
   name: 'chromatic',
   modes: {
-    dark: {
-      colors: ['#000000', '#aae8ff', '#c5fe9e', '#f7888d', '#0d0d0d', '#fffdc3', '#007cff'],
-      alphas: [1, 1, 1, 1, 1, 1, 1],
-      direction: 80,
-      speed: 1.2,
-      intensity: 2,
-      scale: 1.6,
-      softness: 0.18,
-      distortion: 0.3,
-      complexity: 0.68,
-      shape: 1,
-      blur: 1,
-      vignette: 0.26,
-      vigOpacity: 0.6,
-      shaderOpacity: 1,
-    },
-    light: {
-      colors: ['#ffffff', '#ffffff', '#ffffff', '#ffb3b3', '#adadad', '#f5ff70', '#007cff'],
-      alphas: [1, 1, 1, 1, 1, 1, 1],
-      direction: 80,
-      speed: 1.2,
-      intensity: 2,
-      scale: 2.5,
-      softness: 0.18,
-      distortion: 0.3,
-      complexity: 0.68,
-      shape: 1,
-      blur: 1,
-      vignette: 0.24,
-      vigOpacity: 0.16,
-      shaderOpacity: 1,
-    },
+    // Cool blue burn with the dispersion pushed well past Paper's default —
+    // the R/B channel split is the only knob that produces colour separation
+    // in this shader, so it carries what the 5-stop palette used to do.
+    dark: { ...BASE, colorTint: '#88ccffcc', shiftRed: 0.75, shiftBlue: 0.75, shaderOpacity: 1 },
+    light: { ...BASE, colorTint: '#66b0ff99', shiftRed: 0.6, shiftBlue: 0.6, shaderOpacity: 1 },
   },
 };
 
-/** preset-silver-both-modes.json */
 const SILVER: Preset = {
   name: 'silver',
   modes: {
-    dark: {
-      colors: ['#000000', '#dedede', '#747270', '#e5e5e5', '#0d0d0d', '#ffffff', '#e6e6e6'],
-      alphas: [1, 1, 1, 1, 1, 1, 1],
-      direction: 80,
-      speed: 1.2,
-      intensity: 2,
-      scale: 2.5,
-      softness: 0.18,
-      distortion: 0.3,
-      complexity: 0.68,
-      shape: 1,
-      blur: 1,
-      vignette: 0.26,
-      vigOpacity: 0.6,
-      shaderOpacity: 0.88,
-    },
-    light: {
-      colors: ['#f6f6f6', '#ffffff', '#ffffff', '#f7f7f7', '#c9c9c9', '#d0d0d0', '#d1d1d1'],
-      alphas: [1, 1, 1, 1, 1, 1, 1],
-      direction: 80,
-      speed: 1.2,
-      intensity: 2,
-      scale: 2.5,
-      softness: 0.18,
-      distortion: 0.3,
-      complexity: 0.68,
-      shape: 1,
-      blur: 1,
-      vignette: 0.2,
-      vigOpacity: 0.26,
-      shaderOpacity: 1,
-    },
+    // White tint at low amount = Paper's material essentially untouched.
+    dark: { ...BASE, colorTint: '#ffffff66', shaderOpacity: 0.88 },
+    light: { ...BASE, colorTint: '#ffffff40', shaderOpacity: 1 },
   },
 };
 
-/** preset-gold-both-modes.json */
 const GOLD: Preset = {
   name: 'gold',
   modes: {
-    dark: {
-      colors: ['#000000', '#ffffff', '#ffffff', '#f7d488', '#0d0d0d', '#fffdc3', '#ffffff'],
-      alphas: [1, 1, 1, 1, 1, 1, 1],
-      direction: 80,
-      speed: 1.0,
-      intensity: 2,
-      scale: 2.5,
-      softness: 0.18,
-      distortion: 0.3,
-      complexity: 0.68,
-      shape: 1,
-      blur: 1,
-      vignette: 0.26,
-      vigOpacity: 0.6,
-      shaderOpacity: 0.92,
-    },
-    light: {
-      colors: ['#fff8e1', '#fffbe0', '#ffffff', '#fff6d6', '#d2c7a7', '#dcd2bc', '#f9f7e5'],
-      alphas: [1, 1, 1, 1, 1, 1, 1],
-      direction: 80,
-      speed: 1.2,
-      intensity: 2,
-      scale: 2.5,
-      softness: 0.18,
-      distortion: 0.3,
-      complexity: 0.68,
-      shape: 1,
-      blur: 1,
-      vignette: 0.22,
-      vigOpacity: 0.24,
-      shaderOpacity: 1,
-    },
+    dark: { ...BASE, colorTint: '#ffcc55cc', speed: 0.85, shaderOpacity: 0.92 },
+    light: { ...BASE, colorTint: '#f7d488aa', shaderOpacity: 1 },
   },
 };
 
@@ -180,4 +145,4 @@ export const PRESETS: Record<PresetName, Preset> = {
   gold: GOLD,
 };
 
-export { hexToRgb } from './color';
+export { hexToRgb, hexToRgba } from './color';

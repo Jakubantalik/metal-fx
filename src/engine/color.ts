@@ -5,6 +5,26 @@ export function hexToRgb(hex: string): [number, number, number] {
   return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255];
 }
 
+/**
+ * Converts `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa` to a normalized
+ * `[r, g, b, a]` quad (0–1). Alpha defaults to 1 when the hex omits it.
+ *
+ * Paper's shader takes colors as `vec4`, and for `u_colorTint` the alpha is a
+ * blend *amount* (how much colour-burn to apply), not an opacity — so the
+ * 8-digit form is the normal way to write a tint here, not an edge case.
+ */
+export function hexToRgba(hex: string): [number, number, number, number] {
+  let h = hex.replace('#', '');
+  if (h.length === 3 || h.length === 4) h = h.split('').map((c) => c + c).join('');
+  const a = h.length >= 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+  return [
+    parseInt(h.slice(0, 2), 16) / 255,
+    parseInt(h.slice(2, 4), 16) / 255,
+    parseInt(h.slice(4, 6), 16) / 255,
+    a,
+  ];
+}
+
 export function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
