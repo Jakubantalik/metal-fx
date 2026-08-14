@@ -59,6 +59,9 @@ export interface SharedRenderer {
   preset: PresetMode;
   presetDirty: boolean;
   contextLost: boolean;
+  /** Kept so teardown can unregister them again — see teardownSharedRenderer. */
+  onContextLost: EventListener;
+  onContextRestored: EventListener;
   useOffscreen: boolean;
   frameBitmap: ImageBitmap | null;
   startMs: number;
@@ -148,9 +151,15 @@ export function ensureSharedRenderer(): SharedRenderer {
 
   const { program, buffer, uniforms } = buildGLPipeline(gl);
 
-  const onContextLost = (e: Event) => { e.preventDefault(); if (SHARED) SHARED.contextLost = true; };
+  // Both listeners answer for this surface only. `loseContext()` in teardown
+  // delivers its event on a later task, so by the time one of these runs SHARED
+  // can already be a different renderer — see teardownSharedRenderer.
+  const onContextLost = (e: Event) => {
+    e.preventDefault();
+    if (SHARED?.glCanvas === glCanvas) SHARED.contextLost = true;
+  };
   const onContextRestored = () => {
-    if (!SHARED) return;
+    if (SHARED?.glCanvas !== glCanvas) return;
     const rebuilt = buildGLPipeline(SHARED.gl);
     SHARED.program = rebuilt.program;
     SHARED.buffer = rebuilt.buffer;
@@ -165,7 +174,10 @@ export function ensureSharedRenderer(): SharedRenderer {
   SHARED = {
     glCanvas, gl, program, buffer, uniforms,
     preset: PRESETS.chromatic.modes.dark, presetDirty: true,
-    contextLost: false, useOffscreen, frameBitmap: null,
+    contextLost: false,
+    onContextLost: onContextLost as EventListener,
+    onContextRestored: onContextRestored as EventListener,
+    useOffscreen, frameBitmap: null,
     startMs: performance.now(), pausedMs: 0, pausedAtMs: null,
     rafId: 0, dpr, instances: new Set(), frameCount: 0,
     glowQueue: [], glowIdx: 0, glowSkip: 0,
@@ -177,8 +189,15 @@ export function ensureSharedRenderer(): SharedRenderer {
 
 export function teardownSharedRenderer(): void {
   if (!SHARED) return;
-  const { gl, program, buffer, frameBitmap } = SHARED;
+  const { gl, program, buffer, frameBitmap, glCanvas, onContextLost, onContextRestored } = SHARED;
   try {
+    // Off before the context goes. `loseContext()` fires `webglcontextlost` on a
+    // later task, and a listener still attached then would reach into whichever
+    // renderer has taken this one's place: the next mount comes up with
+    // `contextLost` already true, its loop stops on the first frame, and every
+    // instance copies out of a surface nothing has been drawn into.
+    glCanvas.removeEventListener('webglcontextlost', onContextLost, false);
+    glCanvas.removeEventListener('webglcontextrestored', onContextRestored, false);
     frameBitmap?.close();
     gl.deleteBuffer(buffer);
     gl.deleteProgram(program);
