@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode, HTMLAttributes, RefObject } from 'react';
+import type { MaskFn } from './engine/renderer/core';
 
 /**
  * Variant for the metal effect.
@@ -28,6 +29,16 @@ export type MetalFxTheme = 'dark' | 'light' | 'auto';
  * Bundled preset names. Each preset ships both a dark and light mode block.
  */
 export type MetalFxPreset = 'chromatic' | 'silver' | 'gold';
+
+/**
+ * A reflection target: either a bare ref, or a ref plus a per-target
+ * `strength` multiplier (0..1+). Use the object form when a surface should
+ * only catch a faint echo of the metal — a container the button sits inside,
+ * for example — without turning down every other target.
+ */
+export type MetalFxReflectionTarget =
+  | RefObject<HTMLElement | null>
+  | { ref: RefObject<HTMLElement | null>; strength?: number };
 
 /**
  * Props for the MetalFx React component.
@@ -99,8 +110,12 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
    *
    * Pass refs to the sibling DOM elements you want to receive the reflection
    * (chips next to a send button, search field next to an Upgrade pill, ...).
+   *
+   * A target that *contains* the wrapped element (its parent card, say)
+   * receives the reflection on both the nearest vertical and horizontal
+   * inner edges. Pair with `{ ref, strength }` to keep that subtle.
    */
-  reflectionTargets?: ReadonlyArray<RefObject<HTMLElement | null>>;
+  reflectionTargets?: ReadonlyArray<MetalFxReflectionTarget>;
 
   /**
    * Disable the wandering halo overlay. The shader ring still renders.
@@ -136,6 +151,22 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
    * @default 1
    */
   scale?: number;
+
+  /**
+   * Custom alpha mask painter. When set, the shader is kept only where the
+   * mask paints (device px, origin at the wrapper's top-left) and the ring
+   * punch is skipped — for metal-filled text or glyphs. Pair with
+   * `disableGlow`; the glow assumes a ring perimeter.
+   */
+  mask?: MaskFn;
+
+  /**
+   * How the glow is placed when `mask` is set. `'mask'` (default) samples
+   * points inside the mask and clips the halo to it — right for metal text.
+   * `'ring'` keeps the rounded-rect perimeter behaviour — a halo along the
+   * element's edge — for a full-fill mask like a badge.
+   */
+  glowMode?: 'mask' | 'ring';
 
   /**
    * Forwarded class name for the wrapper element.

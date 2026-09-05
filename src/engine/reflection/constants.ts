@@ -32,6 +32,8 @@ export interface ReflectionTarget {
   el: HTMLElement;
   anchor: MetalFxInstance;
   anchorEl: HTMLElement;
+  /** Per-target alpha multiplier from the public API. 1 = canonical. */
+  strength: number;
   wrap: HTMLDivElement;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;

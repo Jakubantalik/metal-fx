@@ -19,8 +19,11 @@ import {
   unregisterGlowInstance,
   updateInstance,
 } from './engine/renderer/loop';
-import { injectGlow, updateGlow } from './engine/glow/glow';
+import { injectGlow, updateGlow, updateGlowMask, type GlowOptions } from './engine/glow/glow';
+import { attachCursorLight, detachCursorLight } from './engine/cursor/light';
+import { subscribeGlowConfig } from './engine/glow/config';
 import { addReflectionTarget, removeReflectionTarget } from './engine/reflection/paint';
+import { isMetalFxSupported } from './engine/renderer/core';
 import { scheduleReflectionPaint } from './engine/reflection/reflectionScheduler';
 import { ensureStylesInjected } from './styles';
 import type { MetalFxProps, MetalFxTheme } from './types';
@@ -100,6 +103,8 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     shaderScale,
     ringCssPx,
     scale = 1,
+    mask,
+    glowMode = 'mask',
     className,
     style,
     ...rest
@@ -123,6 +128,9 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
 
   const [ready, setReady] = useState(false);
   const resolvedTheme = useResolvedTheme(theme);
+  // No WebGL2 → no engine. Every effect below bails on this, and the render
+  // falls through to the plain child so the button is never lost.
+  const supported = useMemo(() => isMetalFxSupported(), []);
   // Write during render (not in an effect) so the glow callback always sees
   // the up-to-date theme on the very next tick.
   themeRef.current = resolvedTheme;
@@ -153,7 +161,11 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     return Math.min(raw, Math.min(w, h) / 2);
   };
 
-  useEffect(() => { setSharedPreset(preset, resolvedTheme); }, [preset, resolvedTheme]);
+  useEffect(() => { if (supported) setSharedPreset(preset, resolvedTheme); }, [preset, resolvedTheme, supported]);
+  useEffect(() => {
+    const inst = instanceRef.current;
+    if (inst) updateInstance(inst, { mask: mask ?? null });
+  }, [mask]);
   // `paused` is per-instance: it freezes only this instance's 2D canvas while
   // the shared GL loop keeps running for any other unpaused instance.
   useEffect(() => {
@@ -181,7 +193,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     const canvas = canvasRef.current;
     const root = rootRef.current;
     const glowHost = glowHostRef.current;
-    if (!canvas || !root) return;
+    if (!canvas || !root || !supported) return;
 
     {
       const computed = getComputedStyle(root);
@@ -198,6 +210,11 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
 
     const initial = measure();
     instanceRef.current = createInstance({
+      onComposite: () => {
+        const inst = instanceRef.current;
+        const h = glowHandlesRef.current;
+        if (inst && h) updateGlowMask(h, inst.deform);
+      },
       hostCanvas: canvas,
       cssWidth: initial.cssWidth,
       cssHeight: initial.cssHeight,
@@ -207,10 +224,34 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       shaderScale,
       ringCssPx,
       scale,
+      mask: mask ?? null,
       onFirstCopy: () => setReady(true),
     });
     root.style.setProperty('--mfx-radius', `${initial.cornerRadius}px`);
     root.style.borderRadius = `${initial.cornerRadius}px`;
+
+    // Custom-mask instances feed the glow a point set inside the glyphs and
+    // the mask itself as an image, so the halo sits *on the metal* and is
+    // clipped to it — not to a ring band that doesn't exist.
+    const glowMaskData = (w: number, h: number): Pick<GlowOptions, 'samplePoints' | 'maskDataUrl'> => {
+      if (!mask || glowMode === 'ring') return {};
+      const dpr = window.devicePixelRatio || 1;
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * dpr)); c.height = Math.max(1, Math.round(h * dpr));
+      const g = c.getContext('2d');
+      if (!g) return {};
+      g.fillStyle = '#fff';
+      mask(g, c.width, c.height, dpr);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      const pts: Array<{ x: number; y: number }> = [];
+      const step = Math.max(1, Math.round(2 * dpr)); // ~2 CSS px grid
+      for (let y = step >> 1; y < c.height; y += step) {
+        for (let x = step >> 1; x < c.width; x += step) {
+          if (d[(y * c.width + x) * 4 + 3] > 128) pts.push({ x: x / dpr, y: y / dpr });
+        }
+      }
+      return { samplePoints: pts, maskDataUrl: c.toDataURL('image/png') };
+    };
 
     if (glowHost) {
       glowHandlesRef.current = injectGlow(glowHost, {
@@ -219,8 +260,22 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         cornerRadius: initial.cornerRadius,
         kind: shape,
         scale,
+        ...glowMaskData(initial.cssWidth, initial.cssHeight),
       });
     }
+
+    const rebuildGlow = (dims: { cssWidth: number; cssHeight: number; cornerRadius: number }) => {
+      if (!glowHost) return;
+      glowHost.innerHTML = '';
+      glowHandlesRef.current = injectGlow(glowHost, {
+        width: dims.cssWidth, height: dims.cssHeight, cornerRadius: dims.cornerRadius, kind: shape, scale,
+        ...glowMaskData(dims.cssWidth, dims.cssHeight),
+      });
+      const inst = instanceRef.current;
+      if (inst && glowHandlesRef.current) {
+        glowHandlesMap.set(inst, { handles: glowHandlesRef.current, themeRef });
+      }
+    };
 
     let resizeRaf = 0;
     const ro = new ResizeObserver(() => {
@@ -235,18 +290,17 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         updateInstance(inst, { cssWidth: next.cssWidth, cssHeight: next.cssHeight, cornerRadius: next.cornerRadius });
         root.style.setProperty('--mfx-radius', `${next.cornerRadius}px`);
         root.style.borderRadius = `${next.cornerRadius}px`;
-        if (glowHost) {
-          glowHost.innerHTML = '';
-          glowHandlesRef.current = injectGlow(glowHost, {
-            width: next.cssWidth, height: next.cssHeight, cornerRadius: next.cornerRadius, kind: shape, scale,
-          });
-          if (inst && glowHandlesRef.current) {
-            glowHandlesMap.set(inst, { handles: glowHandlesRef.current, themeRef });
-          }
-        }
+        rebuildGlow(next);
       });
     });
     ro.observe(root);
+
+    // Glow markup params (stroke widths, blurs, blob lengths) are baked into
+    // the SVG, so a live config change to one of them means a rebuild. Runtime
+    // params are read per-frame and need nothing here.
+    const unsubGlow = subscribeGlowConfig((markupChanged) => {
+      if (markupChanged && instanceRef.current) rebuildGlow(measure());
+    });
 
     // Skip GL compositing for off-screen instances — the loop checks inst.visible
     // before copyShaderToInstance, so hidden instances cost nothing per frame.
@@ -264,10 +318,13 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       glowHandlesMap.set(instanceRef.current, { handles: glowHandlesRef.current, themeRef });
       registerGlowInstance(instanceRef.current);
     }
+    attachCursorLight();
 
     return () => {
+      detachCursorLight();
       ro.disconnect();
       io?.disconnect();
+      unsubGlow();
       if (resizeRaf !== 0) cancelAnimationFrame(resizeRaf);
       const inst = instanceRef.current;
       if (inst) {
@@ -298,11 +355,15 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     const root = rootRef.current;
     if (!inst || !root || !reflectionTargets || resolvedTheme !== 'dark') return;
     inst.onAfterFrame = scheduleReflectionPaint;
-    const live = reflectionTargets.flatMap((r) => (r.current ? [r.current] : []));
-    for (const el of live) addReflectionTarget(el, inst, root);
+    const live = reflectionTargets.flatMap((r) => {
+      const ref = 'current' in r ? r : r.ref;
+      const strength = 'current' in r ? 1 : (r.strength ?? 1);
+      return ref.current ? [{ el: ref.current, strength }] : [];
+    });
+    for (const { el, strength } of live) addReflectionTarget(el, inst, root, strength);
     return () => {
       inst.onAfterFrame = undefined;
-      for (const el of live) removeReflectionTarget(el);
+      for (const { el } of live) removeReflectionTarget(el);
     };
   }, [reflectionTargets, resolvedTheme]);
 
@@ -333,6 +394,23 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     }),
     [style, strength, ready]
   );
+
+  if (!supported) {
+    // Graceful degradation: the wrapped element with its own styling intact —
+    // no normalisation, no canvas, no glow. Consumers can style
+    // `[data-metal-fx-unsupported]` if they want a static stand-in ring.
+    return (
+      <div
+        {...rest}
+        ref={rootRef}
+        className={className ? `metal-fx-fallback ${className}` : 'metal-fx-fallback'}
+        data-metal-fx-unsupported=""
+        style={{ display: 'inline-flex', ...style }}
+      >
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div

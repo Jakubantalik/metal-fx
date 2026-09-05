@@ -1,4 +1,8 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
+import { useBend } from '../hooks/useBend';
+import { ProBadge } from './ProBadge';
+import { NewBadge } from './NewBadge';
+import { useTextReflection } from '../hooks/useTextReflection';
 import { MetalFx } from '../../src';
 import type { Theme } from '../hooks/useTheme';
 import { ArrowUpIcon, ChevronDownIcon, DotsIcon, PlusIcon, SearchIcon18 } from './icons';
@@ -12,6 +16,9 @@ export function Examples({
   theme,
   scaleFactor = 1,
   strength = 1,
+  debug = false,
+  keepMockFill = false,
+  isolate = false,
 }: {
   theme: Theme;
   /** Forwarded to <MetalFx scale={scaleFactor}/> so that, when these examples
@@ -23,16 +30,42 @@ export function Examples({
    *  Playground's strength slider can drive these hero buttons too. 0..1,
    *  defaults to 1 for the standalone 2x hero where there's no slider. */
   strength?: number;
+  /** Dev-only: drop the card surface fill so the rings sit on the bare page. */
+  debug?: boolean;
+  /** With `debug`, leave the chat composer mock's own fill in place. */
+  keepMockFill?: boolean;
+  /** Dev-only: render only the composer example, and inside it only the bare
+   *  metal circle — no textarea, plus, chips, or arrow icon. */
+  isolate?: boolean;
 }) {
+  // ISO pins the card to a flat #0E0E0E so ring + glow read against one
+  // known value. The circle gets the same tone via MetalFx's `style` —
+  // normalizeHostStyles forces the button itself transparent, and the
+  // wrapper background is the documented single-surface override point.
+  const surface = isolate ? 'bg-[#0E0E0E]' : debug ? 'bg-transparent' : 'bg-(--surface)';
   const searchRef = useRef<HTMLLabelElement>(null);
   const dotsRef = useRef<HTMLButtonElement>(null);
   const autoChipRef = useRef<HTMLDivElement>(null);
+  const sendRef = useRef<HTMLDivElement>(null);
+  useBend(sendRef);
+  // "Workspace" catches the badge's metal on its right-hand glyphs.
+  const workspaceRef = useRef<HTMLSpanElement>(null);
+  useTextReflection(workspaceRef);
+  // Stable identity: MetalFx re-registers (tears down + rebuilds the
+  // reflection wrapper) whenever this array's identity changes.
+  const badgeTargets = useMemo(() => [{ ref: workspaceRef, strength: 2.5 }], []);
 
   return (
     <section className="w-full flex flex-col gap-3 mb-12" aria-label="Effect demonstrations">
       {/* Chat input mock */}
-      <div className="relative w-full h-[314px] rounded-[30px] bg-(--surface) flex items-center justify-center px-10 py-12 overflow-hidden max-sm:h-auto max-sm:min-h-[200px] max-sm:px-5 max-sm:py-8 max-sm:rounded-[20px]">
-        <div className="w-[448px] max-w-full rounded-[20px] bg-(--mock-chat-bg) pt-5 px-4 pb-4 flex flex-col max-sm:w-full">
+      <div className={`relative w-full h-[314px] rounded-[30px] ${surface} flex items-center justify-center px-10 py-12 overflow-hidden max-sm:h-auto max-sm:min-h-[200px] max-sm:px-5 max-sm:py-8 max-sm:rounded-[20px]`}>
+        {isolate ? (
+          // Bare circle, full strength, no composer box — nothing else in frame.
+          <MetalFx preset="gold" variant="circle" theme={theme} scale={scaleFactor} strength={1} style={{ background: '#0E0E0E' }}>
+            <button type="button" className={demoCircleClass} aria-label="Send" />
+          </MetalFx>
+        ) : (
+        <div className={`w-[448px] max-w-full rounded-[20px] ${debug && !keepMockFill ? 'bg-transparent' : 'bg-(--mock-chat-bg)'} pt-5 px-4 pb-4 flex flex-col max-sm:w-full`}>
           <textarea
             className="border-none bg-transparent text-(--text) text-sm leading-4 font-inherit outline-none w-full p-0 mb-4 resize-none overflow-hidden placeholder:text-(--mock-chat-placeholder)"
             placeholder="Build anything..."
@@ -48,11 +81,16 @@ export function Examples({
             <div className={chipClass}><span>Agent</span><ChevronDownIcon /></div>
             <div className={chipClass} ref={autoChipRef}><span>Auto</span><ChevronDownIcon /></div>
             <MetalFx
+              ref={sendRef}
               preset="gold"
               variant="circle"
               theme={theme}
               reflectionTargets={[autoChipRef]}
               scale={scaleFactor}
+              // Dev-only: BG/BG2 strip the send button's fill. The host button
+              // is already forced transparent by normalizeHostStyles; the
+              // visible fill is the wrapper background, so that's what goes.
+              style={debug ? { background: 'transparent' } : undefined}
               // Per-example baseline multiplier so the slider still drives
               // the circle, but its rim peaks at 90% rather than full
               // saturation. Pair: chromatic pill below uses 0.7.
@@ -64,10 +102,12 @@ export function Examples({
             </MetalFx>
           </div>
         </div>
+        )}
       </div>
 
       {/* Toolbar row */}
-      <div className="relative w-full h-[370px] rounded-[30px] bg-(--surface) flex items-center justify-center pl-10 pr-20 py-12 overflow-hidden max-sm:h-auto max-sm:min-h-[200px] max-sm:px-5 max-sm:py-8 max-sm:rounded-[20px]">
+      {!isolate && (
+      <div className={`relative w-full h-[370px] rounded-[30px] ${surface} flex items-center justify-center pl-10 pr-20 py-12 overflow-hidden max-sm:h-auto max-sm:min-h-[200px] max-sm:px-5 max-sm:py-8 max-sm:rounded-[20px]`}>
         <div className="absolute -left-[22px] top-[144px] w-[663px] h-[234px] rounded-[20px] bg-[rgba(29,29,29,0.7)] border border-[rgba(44,47,54,0.52)] pointer-events-none max-sm:hidden" aria-hidden="true" />
         <div className="relative z-10 flex items-center gap-3 max-sm:gap-2" role="group" aria-label="Hero toolbar">
           <label className="hero-toolbar-search relative flex items-center gap-1.5 w-[235px] h-10 rounded-full py-2.5 pr-0.5 pl-3 bg-(--pill-bg) border border-(--pill-border) shadow-(--pill-shadow) text-(--pill-fg) text-sm font-medium leading-[17.938px] cursor-text [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:stroke-[#8B8B8B] [&_svg]:fill-none max-sm:w-auto max-sm:flex-1 max-sm:min-w-0" ref={searchRef}>
@@ -99,6 +139,20 @@ export function Examples({
           </button>
         </div>
       </div>
+      )}
+
+      {/* Pro badge — metal in the glyphs, not the ring */}
+      {!isolate && (
+      <div className={`relative w-full h-[220px] rounded-[30px] ${surface} flex items-center justify-center px-10 py-12 overflow-hidden max-sm:h-auto max-sm:min-h-[160px] max-sm:px-5 max-sm:py-8 max-sm:rounded-[20px]`}>
+        <div className="flex items-center gap-3 text-sm text-(--text-muted)">
+          <span ref={workspaceRef}>Workspace</span>
+          {/* Text only catches light on its strokes, so it needs a stronger
+              per-target multiplier than a filled chip would. */}
+          <ProBadge strength={strength} theme={theme} reflectionTargets={badgeTargets} />
+          <NewBadge strength={strength} theme={theme} />
+        </div>
+      </div>
+      )}
     </section>
   );
 }

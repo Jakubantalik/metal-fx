@@ -5,6 +5,7 @@ export type {
   MetalFxVariant,
   MetalFxTheme,
   MetalFxPreset,
+  MetalFxReflectionTarget,
 } from './types';
 
 // Power-user surface: expose the engine primitives so consumers building
@@ -33,8 +34,43 @@ export {
   updateInstance,
   setSharedPreset,
   setSharedPresetMode,
+  getSharedPreset,
+  setInstanceDeform,
+  redrawInstance,
   pauseShared,
   resumeShared,
 } from './engine/renderer/loop';
 
-export type { MetalFxInstance } from './engine/renderer/core';
+export type { MetalFxInstance, DeformFn, DeformLayers, MaskFn } from './engine/renderer/core';
+export { isMetalFxSupported } from './engine/renderer/core';
+
+// Live glow tuning — mutable singleton read by the glow engine every frame.
+export {
+  GLOW,
+  GLOW_DEFAULTS,
+  GLOW_MARKUP_KEYS,
+  setGlowConfig,
+  resetGlowConfig,
+  subscribeGlowConfig,
+  type GlowConfig,
+} from './engine/glow/config';
+
+// Cursor light: glint under the pointer + catch-light facing it.
+export {
+  CURSOR_LIGHT,
+  CURSOR_LIGHT_DEFAULTS,
+  setCursorLightConfig,
+  resetCursorLightConfig,
+  setCursorSprite,
+  type CursorLightConfig,
+  type CursorSprite,
+} from './engine/cursor/light';
+
+// Cursor-as-occluder for proximity reflections.
+export {
+  REFLECTION_OCCLUDER,
+  REFLECTION_OCCLUDER_DEFAULTS,
+  setReflectionOccluderConfig,
+  resetReflectionOccluderConfig,
+  type ReflectionOccluderConfig,
+} from './engine/reflection/paint';
