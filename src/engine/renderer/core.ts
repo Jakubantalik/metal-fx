@@ -62,6 +62,9 @@ export interface MetalFxInstance {
   ringCssPx: number;
   shaderScale: number;
   opacityMul: number;
+  /** Extra multiplier on the glow only (halo + catch-light), default 1. Lets
+   *  a dim shader (low `opacityMul`) still carry a visible glow. */
+  glowGain: number;
   visible: boolean;
   /** Per-instance freeze flag. When true the instance's 2D canvas keeps the
    *  last copied frame; the shared GL loop continues for any other unpaused
@@ -85,6 +88,11 @@ export interface MetalFxInstance {
   onFirstCopy?: () => void;
   /** See `MaskFn`. Takes precedence over the ring punch and over `deform`. */
   mask: MaskFn | null;
+  /** Unmasked copy of the metal sheet for masked instances — what a mirror
+   *  facing the glyphs would see (the stripes, not three thin letters).
+   *  Allocated on demand when a glyph reflection target asks for it. */
+  rawCanvas: HTMLCanvasElement | null;
+  wantRaw: boolean;
   /** See `DeformFn`. Null = rigid rounded-rect mask. */
   deform: DeformFn | null;
   deformLayers: DeformLayers | null;
@@ -95,6 +103,10 @@ export interface MetalFxInstance {
    *  (box-local CSS px) and a 0..1 proximity weight. Set by the cursor-light
    *  tracker; the glow's hotspot faces it. Null when the pointer is away. */
   cursorLight: { x: number; y: number; w: number } | null;
+  /** Set by the glow callback when its envelope is mid-fade: the loop then
+   *  ticks the glow every animation frame instead of every shader frame, so
+   *  a 300 ms fade gets ~20 steps rather than 4. */
+  glowFast: boolean;
 }
 
 export interface SharedRenderer {

@@ -48,6 +48,7 @@ interface CreateInstanceOptions {
   shaderScale?: number;
   ringCssPx?: number;
   opacityMul?: number;
+  glowGain?: number;
   paused?: boolean;
   scale?: number;
   onAfterFrame?: () => void;
@@ -70,6 +71,7 @@ export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
     ringCssPx: opts.ringCssPx ?? (opts.kind === 'circle' ? 2 : 1) * scale,
     shaderScale: opts.shaderScale ?? (opts.kind === 'circle' ? CIRCLE_SHADER_SCALE : PILL_SHADER_SCALE) * scale,
     opacityMul: opts.opacityMul ?? 1,
+    glowGain: opts.glowGain ?? 1,
     visible: true,
     paused: opts.paused ?? false,
     everCopied: false,
@@ -83,6 +85,9 @@ export function createInstance(opts: CreateInstanceOptions): MetalFxInstance {
     deformLayers: null,
     overscan: 0,
     cursorLight: null,
+    glowFast: false,
+    rawCanvas: null,
+    wantRaw: false,
   };
   resizeInstanceCanvas(inst);
   renderer.instances.add(inst);
@@ -111,7 +116,7 @@ export function unregisterGlowInstance(inst: MetalFxInstance): void {
 
 export function updateInstance(
   inst: MetalFxInstance,
-  patch: Partial<Pick<MetalFxInstance, 'cssWidth' | 'cssHeight' | 'cornerRadius' | 'kind' | 'shaderScale' | 'ringCssPx' | 'opacityMul' | 'paused' | 'scale' | 'mask'>>
+  patch: Partial<Pick<MetalFxInstance, 'cssWidth' | 'cssHeight' | 'cornerRadius' | 'kind' | 'shaderScale' | 'ringCssPx' | 'opacityMul' | 'glowGain' | 'paused' | 'scale' | 'mask'>>
 ): void {
   let dirty = false;
   if (patch.mask !== undefined) inst.mask = patch.mask;
@@ -127,6 +132,7 @@ export function updateInstance(
   if (patch.shaderScale !== undefined) inst.shaderScale = patch.shaderScale;
   if (patch.ringCssPx !== undefined) inst.ringCssPx = patch.ringCssPx;
   if (patch.opacityMul !== undefined) inst.opacityMul = patch.opacityMul;
+  if (patch.glowGain !== undefined) inst.glowGain = patch.glowGain;
   if (patch.paused !== undefined && patch.paused !== inst.paused) {
     inst.paused = patch.paused;
     // Unpausing should kick the loop if it had idled because every visible
@@ -231,7 +237,8 @@ export function getSharedFrameCount(): number {
 
 // ─── Glow callback ────────────────────────────────────────────────────────
 
-export type GlowCallback = (inst: MetalFxInstance, nowMs: number) => void;
+/** Returns true when the glow wants per-frame ticks (mid-fade). */
+export type GlowCallback = (inst: MetalFxInstance, nowMs: number) => boolean | void;
 let _glowCallback: GlowCallback | null = null;
 
 export function setGlowCallback(cb: GlowCallback | null): void {
@@ -243,7 +250,7 @@ export function setGlowCallback(cb: GlowCallback | null): void {
 export function tickInstanceGlow(inst: MetalFxInstance, nowMs: number): void {
   if (!_glowCallback || !SHARED || !inst.visible || inst.paused) return;
   if (!SHARED.glowQueue.includes(inst)) return;
-  _glowCallback(inst, nowMs);
+  inst.glowFast = !!_glowCallback(inst, nowMs);
 }
 
 // ─── Internal rendering ───────────────────────────────────────────────────
@@ -333,6 +340,14 @@ function copyShaderToInstance(inst: MetalFxInstance): void {
     if (alpha < 1) ctx.globalAlpha = alpha;
     ctx.drawImage(src, sx, sy, srcW, srcH, 0, 0, dw, dh);
     if (alpha < 1) ctx.globalAlpha = 1;
+    if (inst.wantRaw) {
+      // Keep the sheet before it is cut to the glyphs, for reflections.
+      let rc = inst.rawCanvas;
+      if (!rc) { rc = document.createElement('canvas'); inst.rawCanvas = rc; }
+      if (rc.width !== dw || rc.height !== dh) { rc.width = dw; rc.height = dh; }
+      const rg = rc.getContext('2d');
+      if (rg) { rg.clearRect(0, 0, dw, dh); rg.drawImage(inst.canvas, 0, 0); }
+    }
     ctx.save();
     ctx.globalCompositeOperation = 'destination-in';
     ctx.fillStyle = '#000';
@@ -489,7 +504,15 @@ function tick(now: number): void {
   if (!anyWork) { SHARED.rafId = 0; return; }
 
   SHARED.rafId = requestAnimationFrame(tick);
-  if (now - lastFrameMs < FRAME_INTERVAL_MS) return;
+  if (now - lastFrameMs < FRAME_INTERVAL_MS) {
+    // Between shader frames, keep fading glows moving at display rate.
+    if (_glowCallback) {
+      for (const inst of SHARED.glowQueue) {
+        if (inst.glowFast && inst.visible && !inst.paused) inst.glowFast = !!_glowCallback(inst, now);
+      }
+    }
+    return;
+  }
   lastFrameMs = now;
 
   renderSharedFrame(now);
@@ -515,7 +538,7 @@ function tick(now: number): void {
     for (const inst of SHARED.glowQueue) {
       // Skip paused instances so their halo also freezes (otherwise the
       // catch-light would keep travelling on a frozen ring).
-      if (inst.visible && !inst.paused) _glowCallback(inst, now);
+      if (inst.visible && !inst.paused) inst.glowFast = !!_glowCallback(inst, now);
     }
   }
 }

@@ -83,6 +83,14 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
   strength?: number;
 
   /**
+   * Multiplier on the glow only (halo + catch-light), on top of `strength`.
+   * Use it when the shader runs at low `strength` but the glow should still
+   * read — e.g. metal text. Clamped to 0..1 after multiplying.
+   * @default 1
+   */
+  glowGain?: number;
+
+  /**
    * Pause the shader animation. The visible canvas keeps the last painted
    * frame so the metal silhouette stays on screen.
    * @default false
@@ -122,6 +130,14 @@ export interface MetalFxProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chil
    * @default false
    */
   disableGlow?: boolean;
+
+  /**
+   * Light rim along the top inside edge of the ring — an inner shadow from
+   * above, like the one on metal text. `true` uses the design defaults
+   * (white 90 %, offset 1 px, blur 0.5 px); pass an object to tune.
+   * @default undefined (off)
+   */
+  innerShadow?: boolean | { offsetY?: number; blur?: number; alpha?: number; color?: string };
 
   /**
    * Override the shader sampling scale. Larger values zoom into the shared

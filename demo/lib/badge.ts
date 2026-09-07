@@ -23,13 +23,16 @@ export interface BadgeConfig {
   newGradient: number;
   /** Inner white glow strength (0..1) — scales the two 8.33px inset glows. */
   newGlow: number;
+  /** Bare metal text ("Plan Pro"): glow gain on top of strength × opacity. */
+  textGlow: number;
 }
 export const BADGE_DEFAULTS: Readonly<BadgeConfig> = Object.freeze({
-  shaderScale: 2.8, opacity: 0.73,
+  shaderScale: 2.8, opacity: 0.62,
   newOpacity: 0.8, newShaderScale: 1.6,
   // White core under the label, metal at the rim.
   newCore: 46, newCoreBlur: 100, newCoreStrength: 0.94, newCoreSize: 49,
   newGradient: 0, newGlow: 0.41,
+  textGlow: 2.5,
 });
 export const BADGE: BadgeConfig = { ...BADGE_DEFAULTS };
 

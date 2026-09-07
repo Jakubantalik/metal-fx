@@ -62,7 +62,7 @@ export function Header({
   };
   return (
     <header className="relative w-full h-[218px] text-center flex flex-col items-center justify-end pb-[53px] max-sm:h-auto max-sm:min-h-[180px] max-sm:pt-[60px] max-sm:pb-8">
-      <nav className="absolute top-4 right-0 flex items-center gap-4 max-sm:top-3" aria-label="External links">
+      <nav className="absolute top-4 right-0 z-10 flex items-center gap-4 max-sm:top-3" aria-label="External links">
         {/* Dev-only: strip hero card fills + flatten page bg. Removed from
             production builds via import.meta.env.DEV. */}
         {import.meta.env.DEV && onSetDebugMode && (
@@ -144,7 +144,7 @@ export function Header({
           <XIcon />
         </a>
       </nav>
-      <div className="relative -mt-[190px] -mb-5 cursor-pointer group" aria-hidden="true">
+      <div className="relative -mt-[190px] -mb-5 cursor-pointer group pointer-events-none" aria-hidden="true">
         <img
           className="block relative transition-[filter,transform] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[filter,transform] motion-reduce:!transition-none group-hover:[filter:hue-rotate(45deg)_brightness(1.1)] group-hover:[transform:rotate(8deg)_scale(1.06)]"
           src={theme === 'dark' ? '/header.png' : '/header-light.png'}

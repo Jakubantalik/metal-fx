@@ -38,6 +38,8 @@ export function ShaderPanel({ onClose }: { onClose: () => void }) {
   const applyBadgeScale = (v: number) => { setBadgeScale(v); setBadgeConfig({ shaderScale: v }); };
   const [badgeOpacity, setBadgeOpacity] = useState(BADGE.opacity);
   const applyBadgeOpacity = (v: number) => { setBadgeOpacity(v); setBadgeConfig({ opacity: v }); };
+  const [textGlow, setTextGlow] = useState(BADGE.textGlow);
+  const applyTextGlow = (v: number) => { setTextGlow(v); setBadgeConfig({ textGlow: v }); };
   const [newOpacity, setNewOpacity] = useState(BADGE.newOpacity);
   const applyNewOpacity = (v: number) => { setNewOpacity(v); setBadgeConfig({ newOpacity: v }); };
   const [newScale, setNewScale] = useState(BADGE.newShaderScale);
@@ -164,6 +166,14 @@ export function ShaderPanel({ onClose }: { onClose: () => void }) {
           </span>
           <input type="range" min={0} max={1} step={0.01} value={badgeOpacity} onChange={(e) => applyBadgeOpacity(Number(e.target.value))} className="w-full accent-[#8ab4ff] cursor-grab active:cursor-grabbing" />
           <span className={`${label} opacity-60`}>MetalFx `strength` on the badge — how much metal shows through the glyphs</span>
+        </label>
+        <label className="flex flex-col gap-1 min-w-0">
+          <span className={`${label} flex justify-between gap-2`}>
+            <span className={textGlow !== BADGE_DEFAULTS.textGlow ? 'text-(--title-color)' : undefined}>Pro text glow</span>
+            <span className="font-[Roboto_Mono,monospace] tabular-nums opacity-80">{textGlow.toFixed(2)}</span>
+          </span>
+          <input type="range" min={0} max={6} step={0.05} value={textGlow} onChange={(e) => applyTextGlow(Number(e.target.value))} className="w-full accent-[#8ab4ff] cursor-grab active:cursor-grabbing" />
+          <span className={`${label} opacity-60`}>glow gain on the bare "Pro" text — MetalFx `glowGain`, on top of strength × opacity</span>
         </label>
       </section>
 

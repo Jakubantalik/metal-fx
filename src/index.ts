@@ -1,4 +1,10 @@
 export { MetalFx } from './MetalFx';
+export { MetalText, METAL_TEXT_DEFAULTS, type TextInnerShadow } from './MetalText';
+export { MetalBadge, METAL_BADGE_DEFAULTS, type MetalBadgeCore } from './MetalBadge';
+export { useMetalBend } from './useMetalBend';
+export { BEND, BEND_DEFAULTS, setBendConfig, resetBendConfig, type BendConfig } from './engine/bend/config';
+export { useMetalTextReflection } from './useMetalTextReflection';
+export { paintTextRun, textMaskDataUrl } from './engine/textMask';
 
 export type {
   MetalFxProps,
@@ -42,6 +48,7 @@ export {
 } from './engine/renderer/loop';
 
 export type { MetalFxInstance, DeformFn, DeformLayers, MaskFn } from './engine/renderer/core';
+export { RIM_DEFAULTS, type RimOptions } from './engine/rim';
 export { isMetalFxSupported } from './engine/renderer/core';
 
 // Live glow tuning — mutable singleton read by the glow engine every frame.

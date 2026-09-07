@@ -46,4 +46,6 @@ export interface ReflectionTarget {
   appliedIsolation: boolean;
   resizeObserver: ResizeObserver | null;
   mutationObserver: MutationObserver | null;
+  /** Glyph-target canvas styling applied (see paint). */
+  glyphStyled?: boolean;
 }

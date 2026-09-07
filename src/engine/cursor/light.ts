@@ -166,8 +166,10 @@ let spriteImg: HTMLImageElement | null = null;
 /** DPR when the sprite was registered — a change means browser zoom or a
  *  different display, where the sprite no longer matches the OS cursor. */
 let spriteDpr = 0;
-/** Sticky off-switch flipped by the fail-safes; only a new sprite resets it. */
+/** Off-switch flipped by the fail-safes. An exception disables for the
+ *  session; the frame-time watchdog only pauses for a while (`disabledUntil`). */
 let cursorDisabled = false;
+let disabledUntil = 0;
 let slowFrames = 0;
 /** Opaque body pixels (sprite-local CSS px, centred on `bodyC`), the alpha
  *  centroid, and a hard mask of the body — built once per sprite. The
@@ -175,6 +177,43 @@ let slowFrames = 0;
 let bodyPts: Float32Array | null = null;
 const bodyC = { x: 0, y: 0 };
 let bodyMask: HTMLCanvasElement | null = null;
+/** Hard body alpha at the sprite canvas's device resolution, cached by dpr. */
+let bodyAlpha: Uint8ClampedArray | null = null;
+let bodyAlphaDpr = 0;
+
+function bodyAlphaFor(img: HTMLImageElement, sp: CursorSprite, dpr: number, w: number, h: number): Uint8ClampedArray | null {
+  if (bodyAlpha && bodyAlphaDpr === dpr && bodyAlpha.length === w * h) return bodyAlpha;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  if (!g) return null;
+  g.scale(dpr, dpr);
+  g.drawImage(img, 0, 0, sp.width, sp.height);
+  const d = g.getImageData(0, 0, w, h).data;
+  const a = new Uint8ClampedArray(w * h);
+  for (let i = 0, j = 3; i < a.length; i++, j += 4) a[i] = d[j] >= 128 ? 255 : 0;
+  bodyAlpha = a; bodyAlphaDpr = dpr;
+  return a;
+}
+
+/**
+ * Multiply the canvas alpha by a per-pixel factor, in pixel data. Used in
+ * place of `destination-in`, which WebKit intermittently misapplies on
+ * accelerated canvases (a frame of the unclipped image — a white flash).
+ */
+function alphaPass(g: CanvasRenderingContext2D, w: number, h: number, factor: (x: number, y: number, i: number) => number): void {
+  const img = g.getImageData(0, 0, w, h);
+  const px = img.data;
+  for (let y = 0, i = 0, j = 3; y < h; y++) {
+    for (let x = 0; x < w; x++, i++, j += 4) {
+      const a = px[j];
+      if (a === 0) continue;
+      const f = factor(x, y, i);
+      px[j] = f >= 1 ? a : f <= 0 ? 0 : a * f;
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
 
 function analyseSprite(img: HTMLImageElement, sp: CursorSprite): void {
   const S = 2;
@@ -227,8 +266,8 @@ function bodyExtent(ux: number, uy: number): number {
  *  match the OS pointer pixel-for-pixel, or the swap is visible. */
 export function setCursorSprite(next: CursorSprite | null): void {
   sprite = next;
-  spriteImg = null; bodyPts = null; bodyMask = null;
-  cursorDisabled = false; slowFrames = 0;
+  spriteImg = null; bodyPts = null; bodyMask = null; bodyAlpha = null;
+  cursorDisabled = false; disabledUntil = 0; slowFrames = 0;
   spriteDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   hideCursor();
   if (!next || typeof Image === 'undefined') return;
@@ -275,7 +314,7 @@ const mq = (q: string): boolean => typeof window.matchMedia === 'function' && wi
 /** Whether replacing the OS cursor is acceptable right now. Re-checked
  *  every frame; all of these can change while the page is open. */
 function cursorSwapAllowed(): boolean {
-  if (cursorDisabled || !sprite || !spriteImg) return false;
+  if (cursorDisabled || performance.now() < disabledUntil || !sprite || !spriteImg) return false;
   if (mq('(prefers-reduced-motion: reduce)') || mq('(forced-colors: active)')) return false;
   if (!mq('(pointer: fine)') || !mq('(hover: hover)')) return false;
   if ((window.devicePixelRatio || 1) !== spriteDpr) return false;
@@ -323,6 +362,19 @@ function onMove(e: PointerEvent): void {
   typing = false;
   px = lpx = e.clientX;
   py = lpy = e.clientY;
+  // While the sprite is up, hide the OS cursor and move the sprite *inside*
+  // the event, not in the next frame. WebKit re-evaluates the cursor only on
+  // mouse moves: a hide applied one frame late, after the pointer crossed
+  // into a new element and stopped, leaves the real arrow showing until the
+  // next move. Moving the sprite here also trims a frame of lag.
+  if (curShown && curEl) {
+    if (pointerIsMouse && claimCursor(px, py)) {
+      const sp = sprite;
+      if (sp) curEl.style.transform = `translate3d(${(px - sp.hotX).toFixed(2)}px,${(py - sp.hotY).toFixed(2)}px,0)`;
+    } else {
+      hideCursor();
+    }
+  }
   kick();
 }
 
@@ -382,11 +434,32 @@ let curCanvas: HTMLCanvasElement | null = null;
 let curCtx: CanvasRenderingContext2D | null = null;
 let refCanvas: HTMLCanvasElement | null = null;
 let refCtx: CanvasRenderingContext2D | null = null;
+let refCtxReadable = false;
 let curDpr = 0, curW = 0, curH = 0;
 let curShown = false;
-/** Element whose cursor we replaced, and its previous inline value. */
+/** Root-level hide (stable while the sprite is up — no churn as the pointer
+ *  crosses elements, which is what WebKit shows as flicker), plus one
+ *  element-level hide for elements that set their own `cursor: default`. */
+let rootHidden = false;
+let rootPrev = '';
 let hiddenEl: HTMLElement | null = null;
 let hiddenPrev = '';
+
+const TEXTY = /^(INPUT|TEXTAREA|SELECT)$/;
+/** Per-element verdicts (true = plain arrow, claimable) so a pointermove
+ *  doesn't force style resolution on every event. Cleared on release. */
+let verdicts = new WeakMap<HTMLElement, boolean>();
+let lastClaimMs = 0;
+let lastTarget: HTMLElement | null = null;
+/** Elements where `cursor: auto` means something other than the arrow. */
+function isTextTarget(el: HTMLElement): boolean {
+  let n: HTMLElement | null = el;
+  while (n && n !== document.body) {
+    if (TEXTY.test(n.tagName) || n.isContentEditable) return true;
+    n = n.parentElement;
+  }
+  return false;
+}
 
 function ensureCursor(): boolean {
   if (curEl) return true;
@@ -408,24 +481,52 @@ function ensureCursor(): boolean {
 
 /** Hide the OS cursor on the element under the pointer, if it shows the
  *  plain arrow there. Returns whether the sprite may show. */
-function claimCursor(x: number, y: number): boolean {
-  if (hiddenEl && !hiddenEl.isConnected) { hiddenEl = null; hiddenPrev = ''; }
+function claimCursor(x: number, y: number, force = false): boolean {
+  // Hit-testing forces layout; while the bend is animating that layout is
+  // dirty on every frame, so cap this at ~one per frame unless forced.
+  const now = performance.now();
+  if (!force && rootHidden && now - lastClaimMs < 12) return true;
+  lastClaimMs = now;
   const target = document.elementFromPoint(x, y) as HTMLElement | null;
-  if (target !== hiddenEl) {
-    releaseCursor();
-    if (!target) return false;
-    const cur = getComputedStyle(target).cursor;
-    if (cur !== 'auto' && cur !== 'default') return false;
-    hiddenEl = target; hiddenPrev = target.style.cursor;
-    target.style.cursor = 'none';
+  if (!target) { releaseCursor(); return false; }
+  if (target === lastTarget && rootHidden) return true;
+  lastTarget = target;
+  let ok = verdicts.get(target);
+  if (ok === undefined) {
+    ok = !isTextTarget(target);
+    if (ok) { const cur = getComputedStyle(target).cursor; ok = cur === 'auto' || cur === 'default' || cur === 'none'; }
+    verdicts.set(target, ok);
   }
-  return hiddenEl !== null;
+  if (!ok) { releaseCursor(); return false; }
+  if (!rootHidden) {
+    const root = document.documentElement;
+    rootPrev = root.style.cursor;
+    root.style.cursor = 'none';
+    rootHidden = true;
+  }
+  // Elements that set `cursor: default` / `auto` themselves don't inherit the
+  // root's `none`; hide on them directly (rare — chips, drag handles).
+  if (target !== hiddenEl) {
+    if (hiddenEl) { hiddenEl.style.cursor = hiddenPrev; hiddenEl = null; hiddenPrev = ''; }
+    if (getComputedStyle(target).cursor !== 'none') {
+      hiddenEl = target; hiddenPrev = target.style.cursor;
+      target.style.cursor = 'none';
+    }
+  }
+  return true;
 }
 
 function releaseCursor(): void {
-  if (!hiddenEl) return;
-  hiddenEl.style.cursor = hiddenPrev;
-  hiddenEl = null; hiddenPrev = '';
+  if (hiddenEl) {
+    if (hiddenEl.isConnected) hiddenEl.style.cursor = hiddenPrev;
+    hiddenEl = null; hiddenPrev = '';
+  }
+  if (rootHidden) {
+    document.documentElement.style.cursor = rootPrev;
+    rootHidden = false; rootPrev = '';
+  }
+  lastTarget = null;
+  verdicts = new WeakMap();
 }
 
 function hideCursor(): void {
@@ -444,6 +545,7 @@ function drawCursor(inst: MetalFxInstance, cfg: CursorLightConfig, env: number):
     curCanvas.style.width = `${sp.width}px`;
     curCanvas.style.height = `${sp.height}px`;
   }
+  if (!refCtxReadable) { refCtx = refCanvas.getContext('2d', { willReadFrequently: true }); refCtxReadable = true; if (!refCtx) return; }
   const ctx = curCtx, rctx = refCtx;
   const W = sp.width, H = sp.height;
 
@@ -508,13 +610,11 @@ function drawCursor(inst: MetalFxInstance, cfg: CursorLightConfig, env: number):
       }
       rctx.restore();
       // Fade into the body away from the mirror plane.
-      rctx.globalCompositeOperation = 'destination-in';
-      const g = rctx.createLinearGradient(mx, my, mx - fl * ux, my - fl * uy);
-      g.addColorStop(0, 'rgba(0,0,0,1)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      rctx.fillStyle = g;
-      rctx.fillRect(0, 0, W, H);
-      rctx.globalCompositeOperation = 'source-over';
+      const inv = 1 / dpr, fl1 = 1 / fl;
+      alphaPass(rctx, refCanvas.width, refCanvas.height, (x, y) => {
+        const behind = -(((x + 0.5) * inv - mx) * ux + ((y + 0.5) * inv - my) * uy);
+        return behind <= 0 ? 1 : 1 - behind * fl1;
+      });
     }
 
     // Diffuse: the lit rim, in the ring's colour at that point.
@@ -534,9 +634,8 @@ function drawCursor(inst: MetalFxInstance, cfg: CursorLightConfig, env: number):
     }
 
     // Keep the light on the pointer's body only (not its soft shadow).
-    rctx.globalCompositeOperation = 'destination-in';
-    rctx.drawImage(bodyMask ?? spriteImg, 0, 0, W, H);
-    rctx.globalCompositeOperation = 'source-over';
+    const body = bodyAlphaFor(spriteImg, sp, dpr, refCanvas.width, refCanvas.height);
+    if (body) alphaPass(rctx, refCanvas.width, refCanvas.height, (_x, _y, i) => body[i] === 0 ? 0 : 1);
 
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(refCanvas, 0, 0, W, H);
@@ -572,6 +671,10 @@ function hideSpill(): void {
 function step(now: number): void {
   raf = 0;
   if (!tracking) return;
+  // Own work only — `now` is the frame timestamp and includes whatever else
+  // ran in this frame (React renders, other rAF callbacks), which is not
+  // ours to be blamed for.
+  const t0 = performance.now();
   try {
     stepInner(now);
   } catch (err) {
@@ -583,11 +686,13 @@ function step(now: number): void {
     if (typeof console !== 'undefined') console.warn('metal-fx: cursor light disabled after error', err);
     return;
   }
-  // Watchdog: this should cost well under a millisecond. If it doesn't —
-  // huge pages, a pathological elementFromPoint — stop swapping the cursor.
-  const took = performance.now() - now;
-  if (took > 6) { if (++slowFrames >= 20 && !cursorDisabled) { cursorDisabled = true; hideCursor(); } }
-  else slowFrames = 0;
+  // Watchdog: this should cost well under a millisecond. If it keeps not
+  // doing so — huge pages, a pathological elementFromPoint — pause the
+  // cursor swap for a few seconds and try again.
+  const took = performance.now() - t0;
+  if (took > 6) {
+    if (++slowFrames >= 20) { slowFrames = 0; disabledUntil = performance.now() + 5000; hideCursor(); }
+  } else if (slowFrames > 0) slowFrames--;
 }
 
 function stepInner(now: number): void {

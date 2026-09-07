@@ -377,6 +377,20 @@ export function paintReflections(): void {
     }
     if (tRect.width < 1 || tRect.height < 1) continue;
     if (aRect.width < 1 || aRect.height < 1) continue;
+    // Glyph targets (text masked to its letterforms, see `data-metal-fx-text`)
+    // are lit differently from a chip: no rim stroke or border highlight —
+    // those are a white hairline along a box edge, which on text reads as a
+    // flat light on the last letter — just the mirrored metal itself, at its
+    // natural size so its banding stays legible, fading over a longer run so
+    // more than one letter catches it.
+    const glyph = t.el.hasAttribute('data-metal-fx-text');
+    if (glyph && !t.glyphStyled) {
+      // The chip blur (4 px) exists to melt the ring into a soft rim glow. On
+      // letters it erases exactly the detail the mirror should show — the
+      // stripes and dispersion fringes — so keep it to anti-aliasing width.
+      t.canvas.style.filter = 'blur(0.4px) saturate(1.35) brightness(1.2)';
+      t.glyphStyled = true;
+    }
 
     if (
       !isHorizontalNeighbour(aRect, tRect, OVERLAP_MIN_PX, ATTACH_RANGE_PX) &&
@@ -387,7 +401,13 @@ export function paintReflections(): void {
       continue;
     }
 
-    const anchorCanvas = t.anchor.canvas;
+    // Glyph target on a masked anchor: mirror the metal *sheet*, not the
+    // three thin letters cut from it. A mirror facing the "Pro" glyphs shows
+    // the material's stripes across its whole face; the masked canvas would
+    // give mostly transparency with a few slivers.
+    const useRaw = glyph && !!t.anchor.mask;
+    if (useRaw && !t.anchor.wantRaw) t.anchor.wantRaw = true;
+    const anchorCanvas = (useRaw && t.anchor.rawCanvas) ? t.anchor.rawCanvas : t.anchor.canvas;
     // Sample only the anchor's CSS box. While a vector bend is active the
     // canvas carries an `overscan` margin on every side; reading it whole
     // would shrink the ring to the middle of the slice and miss the band.
@@ -398,7 +418,7 @@ export function paintReflections(): void {
     // Custom-mask anchors (metal text): the metal is wherever the mask
     // painted, not at the box edge. Crop the source to its alpha bounding
     // box so the glyphs' edge — not the padding — lands on the target.
-    if (t.anchor.mask) {
+    if (t.anchor.mask && !useRaw) {
       const bb = alphaBBox(anchorCanvas, ssx, ssy, sw, sh);
       if (bb) { ssx = bb.x; ssy = bb.y; sw = bb.w; sh = bb.h; }
     }
@@ -469,7 +489,7 @@ export function paintReflections(): void {
       const viaScratch = li > 0 && ensureScratch(tw, th);
       const fCtx = viaScratch ? (scratchFillCtx as CanvasRenderingContext2D) : ctx;
       const sCtx = viaScratch ? (scratchStrokeCtx as CanvasRenderingContext2D) : strokeCtx;
-      const bandDevPx = Math.min(RANGE_PX * dpr, Math.max(tw, th));
+      const bandDevPx = Math.min((glyph ? RANGE_PX * 1.5 : RANGE_PX) * dpr, Math.max(tw, th));
       let g0x: number, g0y: number, g1x: number, g1y: number;
       if (horiz) {
         g0x = dx > 0 ? tw : 0; g1x = dx > 0 ? tw - bandDevPx : bandDevPx;
@@ -484,7 +504,9 @@ export function paintReflections(): void {
       grad.addColorStop(1, `rgba(0,0,0,${GRAD_FAR})`);
 
       const anchorCssW = sw / dpr;
-      const refWdpr = Math.max(1, Math.round(REF_DRAW_CSS_W * Math.max(0.1, anchorCssW / 140) * dpr));
+      const refWdpr = glyph
+        ? Math.max(1, Math.min(horiz ? tw : th, Math.round(horiz ? sw : sh)))
+        : Math.max(1, Math.round(REF_DRAW_CSS_W * Math.max(0.1, anchorCssW / 140) * dpr));
 
       let drawX: number, drawY: number, drawW: number, drawH: number;
       let flipX = false, flipY = false;
@@ -509,22 +531,25 @@ export function paintReflections(): void {
 
       const strokeBox: BoxRect = { x: 0, y: 0, w: tw, h: th, r: Math.max(0, t.cornerRadius * dpr) };
 
-      const fillReflectionAlpha = Math.min(
-        MAX_ALPHA_STACK,
-        reflectionAlpha * FILL_EXTRA_ALPHA * FILL_OPACITY_MUL * FILL_CIRCLE_ATTENUATION
-      );
-      maskedFillPasses(fCtx, anchorCanvas, sw, sh, tw, th, fillReflectionAlpha, grad, drawDst, strokeBox, dpr);
+      // Glyphs: one pass, never over 1 — stacking `lighter` passes clips the
+      // metal's highlights to white and the colour is gone.
+      const fillReflectionAlpha = glyph
+        ? Math.min(1, reflectionAlpha * FILL_OPACITY_MUL)
+        : Math.min(MAX_ALPHA_STACK, reflectionAlpha * FILL_EXTRA_ALPHA * FILL_OPACITY_MUL * FILL_CIRCLE_ATTENUATION);
+      maskedFillPasses(fCtx, anchorCanvas, sw, sh, tw, th, fillReflectionAlpha, grad, drawDst, strokeBox, dpr, glyph ? Math.max(tw, th) : undefined);
 
-      maskedStrokePasses(
-        sCtx, anchorCanvas, sw, sh, tw, th,
-        strokeBox, reflectionAlpha, strokeBandPx, grad, STROKE_EXTRA_ALPHA, drawDst
-      );
+      if (!glyph) {
+        maskedStrokePasses(
+          sCtx, anchorCanvas, sw, sh, tw, th,
+          strokeBox, reflectionAlpha, strokeBandPx, grad, STROKE_EXTRA_ALPHA, drawDst
+        );
 
-      drawBorderHighlight(
-        sCtx, strokeBox, borderHighlightPx,
-        g0x, g0y, g1x, g1y,
-        Math.min(0.85, BORDER_HILITE_ALPHA * reflectionAlpha)
-      );
+        drawBorderHighlight(
+          sCtx, strokeBox, borderHighlightPx,
+          g0x, g0y, g1x, g1y,
+          Math.min(0.85, BORDER_HILITE_ALPHA * reflectionAlpha)
+        );
+      }
 
       if (viaScratch) {
         ctx.globalCompositeOperation = 'lighter';

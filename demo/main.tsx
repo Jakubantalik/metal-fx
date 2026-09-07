@@ -1,3 +1,4 @@
+if (import.meta.env.DEV) (globalThis as { __MFX_DEBUG__?: boolean }).__MFX_DEBUG__ = true;
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';

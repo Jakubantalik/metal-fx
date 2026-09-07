@@ -19,8 +19,9 @@ import {
   unregisterGlowInstance,
   updateInstance,
 } from './engine/renderer/loop';
-import { injectGlow, updateGlow, updateGlowMask, type GlowOptions } from './engine/glow/glow';
+import { carryGlowState, injectGlow, updateGlow, updateGlowMask, type GlowOptions } from './engine/glow/glow';
 import { attachCursorLight, detachCursorLight } from './engine/cursor/light';
+import { RIM_DEFAULTS, injectRim, removeRim, updateRim, type RimHandles, type RimOptions } from './engine/rim';
 import { subscribeGlowConfig } from './engine/glow/config';
 import { addReflectionTarget, removeReflectionTarget } from './engine/reflection/paint';
 import { isMetalFxSupported } from './engine/renderer/core';
@@ -36,11 +37,20 @@ ensureStylesInjected();
 const CANVAS_STYLE: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 const INNER_STYLE: CSSProperties = { position: 'absolute', inset: 3 };
 const GLOW_HOST_STYLE: CSSProperties = { position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, borderRadius: 'inherit' };
+// Rim sits above the metal and the glow, below the content.
+const RIM_HOST_STYLE: CSSProperties = { position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 };
 
 // Maps each live instance to its SVG glow handles and a theme ref.
 // Keyed by instance (not component) because the same component can be
 // remounted with a new instance after shape/glowEnabled changes.
 const glowHandlesMap = new Map<MetalFxInstance, { handles: ReturnType<typeof injectGlow>; themeRef: { current: 'dark' | 'light' } }>();
+// Opt-in introspection for the demo's dev tooling: with
+// `globalThis.__MFX_DEBUG__ = true` the live instance → glow map is exposed
+// as `globalThis.__mfxGlow` on the next mount. Never set in production.
+function exposeGlowDebug(): void {
+  const g = globalThis as { __MFX_DEBUG__?: boolean; __mfxGlow?: unknown };
+  if (g.__MFX_DEBUG__) g.__mfxGlow = glowHandlesMap;
+}
 
 // Bridge between the shared animation loop and per-instance glow SVGs.
 // The loop module doesn't import glow directly — it invokes this callback
@@ -48,8 +58,8 @@ const glowHandlesMap = new Map<MetalFxInstance, { handles: ReturnType<typeof inj
 // proportional to frame budget regardless of instance count.
 setGlowCallback((inst, nowMs) => {
   const entry = glowHandlesMap.get(inst);
-  if (!entry) return;
-  updateGlow(entry.handles, inst, nowMs, inst.opacityMul, entry.themeRef.current);
+  if (!entry) return false;
+  return updateGlow(entry.handles, inst, nowMs, inst.opacityMul * inst.glowGain, entry.themeRef.current);
 });
 
 /**
@@ -95,11 +105,13 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
     preset = 'chromatic',
     theme = 'auto',
     strength = 1,
+    glowGain = 1,
     paused = false,
     borderRadius,
     normalizeHostStyles = true,
     reflectionTargets,
     disableGlow = false,
+    innerShadow,
     shaderScale,
     ringCssPx,
     scale = 1,
@@ -120,6 +132,8 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glowHostRef = useRef<HTMLDivElement | null>(null);
+  const rimHostRef = useRef<HTMLDivElement | null>(null);
+  const rimHandlesRef = useRef<RimHandles | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<MetalFxInstance | null>(null);
   const glowHandlesRef = useRef<ReturnType<typeof injectGlow> | null>(null);
@@ -214,6 +228,8 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         const inst = instanceRef.current;
         const h = glowHandlesRef.current;
         if (inst && h) updateGlowMask(h, inst.deform);
+        const r = rimHandlesRef.current;
+        if (inst && r) updateRim(r, inst.deform);
       },
       hostCanvas: canvas,
       cssWidth: initial.cssWidth,
@@ -266,18 +282,42 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
 
     const rebuildGlow = (dims: { cssWidth: number; cssHeight: number; cornerRadius: number }) => {
       if (!glowHost) return;
+      const prev = glowHandlesRef.current;
       glowHost.innerHTML = '';
       glowHandlesRef.current = injectGlow(glowHost, {
         width: dims.cssWidth, height: dims.cssHeight, cornerRadius: dims.cornerRadius, kind: shape, scale,
         ...glowMaskData(dims.cssWidth, dims.cssHeight),
       });
+      // A rebuild is a fresh, invisible glow. Carry the old one's state over so
+      // a resize doesn't read as "the glow vanished, then came back elsewhere".
+      if (prev) carryGlowState(prev, glowHandlesRef.current);
       const inst = instanceRef.current;
       if (inst && glowHandlesRef.current) {
         glowHandlesMap.set(inst, { handles: glowHandlesRef.current, themeRef });
       }
     };
 
+    const rimOpts = (): RimOptions | null => {
+      if (!innerShadow) return null;
+      return innerShadow === true ? RIM_DEFAULTS : { ...RIM_DEFAULTS, ...innerShadow };
+    };
+    const rebuildRim = (dims: { cssWidth: number; cssHeight: number; cornerRadius: number }) => {
+      const host = rimHostRef.current;
+      const inst = instanceRef.current;
+      removeRim(rimHandlesRef.current);
+      rimHandlesRef.current = null;
+      const o = rimOpts();
+      if (!host || !inst || !o) return;
+      rimHandlesRef.current = injectRim(host, { width: dims.cssWidth, height: dims.cssHeight, cornerRadius: dims.cornerRadius, kind: shape, ring: inst.ringCssPx }, o);
+    };
+    rebuildRim(initial);
+
     let resizeRaf = 0;
+    // Last dimensions the glow was built for. ResizeObserver fires on any box
+    // change — including ones that leave the size identical (re-layout, font
+    // load, a parent's transform) — and rebuilding the glow for those restarts
+    // it from invisible, which reads as the halo blinking out with no fade.
+    let builtW = initial.cssWidth, builtH = initial.cssHeight, builtR = initial.cornerRadius;
     const ro = new ResizeObserver(() => {
       if (resizeRaf !== 0) return;
       // RAF-debounce: coalesce multiple resize events within the same frame and
@@ -287,10 +327,15 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
         const next = measure();
         const inst = instanceRef.current;
         if (!inst) return;
+        const same = Math.abs(next.cssWidth - builtW) < 0.5 && Math.abs(next.cssHeight - builtH) < 0.5
+          && Math.abs(next.cornerRadius - builtR) < 0.5;
+        if (same) return;
+        builtW = next.cssWidth; builtH = next.cssHeight; builtR = next.cornerRadius;
         updateInstance(inst, { cssWidth: next.cssWidth, cssHeight: next.cssHeight, cornerRadius: next.cornerRadius });
         root.style.setProperty('--mfx-radius', `${next.cornerRadius}px`);
         root.style.borderRadius = `${next.cornerRadius}px`;
         rebuildGlow(next);
+        rebuildRim(next);
       });
     });
     ro.observe(root);
@@ -319,9 +364,12 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       registerGlowInstance(instanceRef.current);
     }
     attachCursorLight();
+    exposeGlowDebug();
 
     return () => {
       detachCursorLight();
+      removeRim(rimHandlesRef.current);
+      rimHandlesRef.current = null;
       ro.disconnect();
       io?.disconnect();
       unsubGlow();
@@ -344,8 +392,8 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
   useEffect(() => {
     const inst = instanceRef.current;
     if (!inst) return;
-    updateInstance(inst, { opacityMul: Math.max(0, Math.min(1, strength)) });
-  }, [strength, variant]);
+    updateInstance(inst, { opacityMul: Math.max(0, Math.min(1, strength)), glowGain: Math.max(0, glowGain) });
+  }, [strength, glowGain, variant]);
 
   // onAfterFrame is wired here rather than at createInstance time so instances
   // without reflectionTargets never schedule the reflection RAF.
@@ -427,6 +475,7 @@ export const MetalFx = forwardRef<HTMLDivElement, MetalFxProps>(function MetalFx
       <canvas ref={canvasRef} className="metal-fx-canvas" style={CANVAS_STYLE} />
       <div className="metal-fx-inner" aria-hidden="true" style={INNER_STYLE} />
       <div ref={glowHostRef} aria-hidden="true" style={{ ...GLOW_HOST_STYLE, display: glowEnabled ? undefined : 'none' }} />
+      {innerShadow ? <div ref={rimHostRef} aria-hidden="true" style={RIM_HOST_STYLE} /> : null}
       <div ref={contentRef} className="metal-fx-content">{children}</div>
     </div>
   );

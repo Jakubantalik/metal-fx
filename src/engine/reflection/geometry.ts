@@ -157,9 +157,12 @@ export function maskedFillPasses(
   grad: CanvasGradient,
   dst: DrawDst,
   fillBox: BoxRect,
-  dpr: number
+  dpr: number,
+  /** Override for the edge band the fill is clipped to, device px. Glyph
+   *  targets pass the whole box — letters have no "rim" to hug. */
+  bandDevPxOverride?: number
 ): void {
-  const fillBandDevPx = Math.max(1, Math.round((RANGE_PX + FILL_BLUR_CSS_PX * 3) * dpr));
+  const fillBandDevPx = bandDevPxOverride ?? Math.max(1, Math.round((RANGE_PX + FILL_BLUR_CSS_PX * 3) * dpr));
   let remaining = Math.max(0, totalAlpha);
   let firstChunk = true;
   for (let i = 0; i < 3 && remaining > 1e-4; i++) {
