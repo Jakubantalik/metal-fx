@@ -35,7 +35,7 @@ interface Candidate { edge: number; proximity: number; edgeCoord: number; along:
  */
 export function MetalEdgeHalo({ reach = 72, depth = 34, intensity = 1 }: MetalEdgeHaloProps) {
   const { width: SW, height: SH } = useWindowDimensions();
-  useAnchorsVersion();
+  const version = useAnchorsVersion();
   const cand = useMemo<Candidate | null>(() => {
     let best: Candidate | null = null;
     for (const a of allAnchors()) {
@@ -56,7 +56,7 @@ export function MetalEdgeHalo({ reach = 72, depth = 34, intensity = 1 }: MetalEd
       }
     }
     return best;
-  }, [SW, SH, reach]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [SW, SH, reach, version]);
   const clock = useClock();
   const uniforms = useDerivedValue(() => {
     if (!cand) return { edge: 0, edgeCoord: 0, centerAlong: 0, halfLen: 0, depth: 0, intensity: 0, tint: [0, 0, 0], time: 0 };
@@ -84,7 +84,7 @@ export function MetalEdgeHalo({ reach = 72, depth = 34, intensity = 1 }: MetalEd
   });
   if (!cand) return null;
   return (
-    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+    <Canvas opaque={false} style={StyleSheet.absoluteFill} pointerEvents="none">
       <Fill blendMode="plus">
         <Shader source={haloEffect()} uniforms={uniforms} />
       </Fill>

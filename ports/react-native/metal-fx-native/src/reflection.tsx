@@ -133,7 +133,7 @@ export function MetalReflection({ of, strength = 1, cornerRadius, style, childre
     ref.current?.measureInWindow((x, y, width, height) => setFrame({ x, y, width, height }));
   }, []);
   return (
-    <View ref={ref} onLayout={onLayout} style={[{ alignSelf: 'flex-start' }, style]}>
+    <View ref={ref} onLayout={onLayout} style={style}>
       {children}
       {anchor && frame.width > 0 && <SurfaceLayer anchor={anchor} frame={frame} strength={strength} cornerRadius={cornerRadius ?? Math.min(frame.width, frame.height) / 2} />}
     </View>
@@ -160,7 +160,7 @@ function SurfaceLayer({ anchor, frame, strength, cornerRadius }: { anchor: Metal
     </Rect>
   );
   return (
-    <Canvas style={{ position: 'absolute', left: 0, top: 0, width: tW, height: tH }} pointerEvents="none">
+    <Canvas opaque={false} style={{ position: 'absolute', left: 0, top: 0, width: tW, height: tH }} pointerEvents="none">
       <Group clip={shape}>
         {/* Fill: the mirrored band in the edge strip, blurred and lifted. */}
         <Group clip={edgeBand(RANGE_PX + FILL_BLUR * 3)} layer={<Paint><Blur blur={FILL_BLUR} /><ColorMatrix matrix={saturateBrighten(1.2, 1.58)} /></Paint>}>
@@ -205,7 +205,7 @@ export function MetalReflectionText({ of, children: text, fontSize = 24, fontWei
   }, []);
   return (
     <View ref={ref} onLayout={onLayout} style={[{ width, height }, style]}>
-      <Canvas style={{ width, height }} pointerEvents="none">
+      <Canvas opaque={false} style={{ width, height }} pointerEvents="none">
         <Text x={0} y={baseline} text={text} font={font} color={color} />
         {anchor && frame.width > 0 && (
           <Mask mode="alpha" mask={<Text x={0} y={baseline} text={text} font={font} color="white" />}>

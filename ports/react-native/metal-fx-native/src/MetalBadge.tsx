@@ -84,7 +84,7 @@ export function MetalBadge({
   const k = scale;
   return (
     <View ref={viewRef} onLayout={onLayout} style={[{ width: w, height: h }, style]}>
-      <Canvas style={{ width: w, height: h }} pointerEvents="none">
+      <Canvas opaque={false} style={{ width: w, height: h }} pointerEvents="none">
         <RoundedRect rect={pill} color="white" />
         <RoundedRect rect={pill}>
           <Shader source={liquidMetalEffect()} uniforms={uniforms} />
@@ -99,9 +99,11 @@ export function MetalBadge({
           <LinearGradient start={vec(0, 0)} end={vec(0, h)} colors={[`rgba(255,255,255,${gradient})`, 'rgba(255,255,255,0)']} />
         </RoundedRect>
         {/* Inset glows: two 8.333-pt white inner glows. */}
-        <Group clip={pill} layer={<Paint><Blur blur={8.333 * 0.5 * k} /></Paint>}>
-          <RoundedRect rect={pill} style="stroke" strokeWidth={8.333 * 2 * k} color={`rgba(255,255,255,${glow})`} />
-          <RoundedRect rect={pill} style="stroke" strokeWidth={8.333 * 2 * k} color={`rgba(255,255,255,${glow})`} />
+        <Group clip={pill}>
+          <Group layer={<Paint><Blur blur={8.333 * 0.5 * k} /></Paint>}>
+            <RoundedRect rect={pill} style="stroke" strokeWidth={8.333 * 2 * k} color={`rgba(255,255,255,${glow})`} />
+            <RoundedRect rect={pill} style="stroke" strokeWidth={8.333 * 2 * k} color={`rgba(255,255,255,${glow})`} />
+          </Group>
         </Group>
         {/* Hairline .833 at 50 %, and the top rim .833 at 78 %. */}
         <Group clip={pill}>
