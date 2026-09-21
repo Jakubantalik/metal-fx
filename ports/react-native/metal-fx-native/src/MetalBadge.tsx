@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { PixelRatio, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Blur, Canvas, Group, Paint, RadialGradient, Rect, RoundedRect, Shader, Text, rect, rrect, vec, LinearGradient } from '@shopify/react-native-skia';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 import { liquidMetalEffect, useMetalTime } from './MetalFx';
 import { materialUniforms, presetMaterial, sheetMapping, type MetalPreset, type MetalTheme } from './material';
 import { useMetalFont } from './MetalText';
-import { registerAnchor, unregisterAnchor, updateAnchorFrame, updateAnchorLook, type MetalAnchor } from './registry';
+import { registerAnchor, registerMeasurer, unregisterAnchor, updateAnchorFrame, updateAnchorLook, type MetalAnchor } from './registry';
 import type { BendField } from './bend';
 
 export interface MetalBadgeCore { r: number; blur: number; a: number; size: number }
@@ -75,9 +75,11 @@ export function MetalBadge({
     return () => { unregisterAnchor(id, a); anchorRef.current = null; };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const a = anchorRef.current; if (a) updateAnchorLook(a, { width: w, height: h, cornerRadius: r, material, mapping, opacityMul, time }); }, [w, h, r, material, mapping, opacityMul, time]);
-  const onLayout = (_e: LayoutChangeEvent) => {
+  const measure = useCallback(() => {
     viewRef.current?.measureInWindow((x, y, ww, hh) => { const a = anchorRef.current; if (a) updateAnchorFrame(a, { x, y, width: ww, height: hh }); });
-  };
+  }, []);
+  const onLayout = (_e: LayoutChangeEvent) => measure();
+  useEffect(() => registerMeasurer(measure), [measure]);
 
   const pill = rrect(rect(0, 0, w, h), r, r);
   const rx = (w * core.size) / 100, ry = (h * core.size) / 100;

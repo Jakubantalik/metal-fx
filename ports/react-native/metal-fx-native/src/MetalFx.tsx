@@ -21,7 +21,7 @@ import { materialUniforms, presetMaterial, sampleLuminance, sampleMaterial, shee
 import { bandPath, outlinePath, roundRectOutline, rrPerim, shapeKind, shapePerim, type Deform } from './geometry';
 import { BEND_DEFAULTS, deformPoint, useBendField, useTilt, type BendConfig } from './bend';
 import { GLOW_DEFAULTS, configureGlow, extraSprite, glowTick, haloSprite, initialGlowState, type GlowConfig, type GlowFrame } from './glow';
-import { CLOCK_EPOCH, registerAnchor, unregisterAnchor, updateAnchorFrame, updateAnchorLook, type MetalAnchor } from './registry';
+import { CLOCK_EPOCH, registerAnchor, registerMeasurer, unregisterAnchor, updateAnchorFrame, updateAnchorLook, type MetalAnchor } from './registry';
 
 let effect: ReturnType<typeof Skia.RuntimeEffect.Make> | null = null;
 export function liquidMetalEffect() {
@@ -132,14 +132,18 @@ export function MetalFx({
     if (a) updateAnchorLook(a, { width: box.width, height: box.height, cornerRadius: radius, ringWidth: ring, kind, material, mapping, opacityMul, time, field });
   }, [box, radius, ring, kind, material, mapping, opacityMul, time, field]);
 
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    setBox({ width, height });
+  const measure = useCallback(() => {
     viewRef.current?.measureInWindow((x, y, w, h) => {
       const a = anchorRef.current;
       if (a) updateAnchorFrame(a, { x, y, width: w, height: h });
     });
   }, []);
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBox({ width, height });
+    measure();
+  }, [measure]);
+  useEffect(() => registerMeasurer(measure), [measure]);
 
   // Geometry for this frame: outlines displaced by the bend field.
   const paths = useDerivedValue(() => {
